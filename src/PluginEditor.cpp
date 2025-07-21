@@ -212,9 +212,7 @@ void DemoThumbnailComp::updateCursorPosition()
 //==============================================================================
 AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(AudioFilePlayerAudioProcessor& p) :
 AudioProcessorEditor (&p),
-audioProcessor (p),
-//transportSource(p.transportSource)
-directoryList(nullptr, audioProcessor.directoryScannerBackgroundThread)
+audioProcessor (p)
 {
     addAndMakeVisible (zoomLabel);
     zoomLabel.setFont (Font (15.00f, Font::plain));
@@ -226,20 +224,18 @@ directoryList(nullptr, audioProcessor.directoryScannerBackgroundThread)
     addAndMakeVisible (followTransportButton);
     followTransportButton.onClick = [this] { updateFollowTransportState(); };
     
-    directoryList.setDirectory (File::getSpecialLocation (File::userHomeDirectory), true, true);
+    addAndMakeVisible (chooseFileButton);
+    chooseFileButton.setColour (TextButton::buttonColourId, Colour (0xff7f7fff));
+    chooseFileButton.setColour (TextButton::textColourOffId, Colours::white);
+    chooseFileButton.onClick = [this] { chooseFile(); };
     
-    addAndMakeVisible (fileTreeComp);
-    
-    
-    fileTreeComp.setColour (FileTreeComponent::backgroundColourId, Colours::lightgrey.withAlpha (0.6f));
-    fileTreeComp.addListener (this);
-    
-    // addAndMakeVisible (explanation);
-    // explanation.setFont (Font (14.00f, Font::plain));
-    // explanation.setJustificationType (Justification::bottomRight);
-    // explanation.setEditable (false, false, false);
-    // explanation.setColour (TextEditor::textColourId, Colours::black);
-    // explanation.setColour (TextEditor::backgroundColourId, Colour (0x00000000));
+    addAndMakeVisible (filenameLabel);
+    filenameLabel.setFont (Font (14.00f, Font::plain));
+    filenameLabel.setJustificationType (Justification::centredLeft);
+    filenameLabel.setEditable (false, false, false);
+    filenameLabel.setColour (Label::backgroundColourId, Colours::white.withAlpha (0.8f));
+    filenameLabel.setColour (Label::outlineColourId, Colours::grey);
+    filenameLabel.setColour (Label::textColourId, Colours::black);
     
     addAndMakeVisible (zoomSlider);
     zoomSlider.setRange (0, 1, 0);
@@ -251,25 +247,12 @@ directoryList(nullptr, audioProcessor.directoryScannerBackgroundThread)
                                             audioProcessor.transportSource));
     addAndMakeVisible (thumbnail.get());
     thumbnail->addChangeListener (this); //listen for dragAndDrop activities
-    /*
-     Problem:
-        there is no means of refreshing the startStopButton when playback is started or stopped
-        there is no means of refreshing the DemoThumbnailComp when the audio file changes
-     Cause:
-        the activeSource->transportSource is created on a background thread now
-        it is not a member variable that continually exists
-     
-     */
-//    audioProcessor.transportSource.addChangeListener(this);
     
     startStopButton.setClickingTogglesState(true);
     addAndMakeVisible (startStopButton);
     startStopButton.setColour (TextButton::buttonColourId, Colour (0xff79ed7f));
     startStopButton.setColour (TextButton::textColourOffId, Colours::black);
     startStopButton.onClick = [this] { startOrStop(); };
-//    startStopButton.setEnabled( audioProcessor.transportSource.getTotalLength() > 0);
-    
-    
     
     startTimerHz(50);
     setOpaque (true);
@@ -278,11 +261,6 @@ directoryList(nullptr, audioProcessor.directoryScannerBackgroundThread)
 
 AudioFilePlayerAudioProcessorEditor::~AudioFilePlayerAudioProcessorEditor()
 {
-//    audioProcessor.transportSource.removeChangeListener(this);
-//    transportSource  .setSource (nullptr); //TODO: figure out where this should go.
-    
-    fileTreeComp.removeListener (this);
-    
     thumbnail->removeChangeListener (this);
 }
 
@@ -295,12 +273,15 @@ void AudioFilePlayerAudioProcessorEditor::resized()
 {
     auto r = getLocalBounds().reduced (4);
     
-    auto controls = r.removeFromBottom (90);
+    auto controls = r.removeFromBottom (120);
     
-    // auto controlRightBounds = controls.removeFromRight (controls.getWidth() / 3);
+    // File selection area
+    auto fileArea = controls.removeFromTop (30);
+    chooseFileButton.setBounds (fileArea.removeFromLeft (100));
+    fileArea.removeFromLeft (4); // spacing
+    filenameLabel.setBounds (fileArea);
     
-    
-    // explanation.setBounds (controlRightBounds);
+    controls.removeFromTop (4); // spacing
     
     auto zoom = controls.removeFromTop (25);
     zoomLabel .setBounds (zoom.removeFromLeft (50));
@@ -311,11 +292,7 @@ void AudioFilePlayerAudioProcessorEditor::resized()
     
     r.removeFromBottom (6);
     
-    
-    thumbnail->setBounds (r.removeFromBottom (140));
-    r.removeFromBottom (6);
-    
-    fileTreeComp.setBounds (r);
+    thumbnail->setBounds (r);
 }
 
 //==============================================================================
@@ -337,20 +314,35 @@ void AudioFilePlayerAudioProcessorEditor::updateFollowTransportState()
     thumbnail->setFollowsTransport (followTransportButton.getToggleState());
 }
 
-void AudioFilePlayerAudioProcessorEditor::selectionChanged()
+void AudioFilePlayerAudioProcessorEditor::chooseFile()
 {
-    audioProcessor.transportSourceCreator.requestTransportForURL(URL (fileTreeComp.getSelectedFile()));
+    fileChooser.reset (new FileChooser ("Choose an audio file...",
+                                       File::getSpecialLocation (File::userHomeDirectory),
+                                       audioProcessor.formatManager.getWildcardForAllFormats()));
+    
+    auto chooserFlags = FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles;
+    
+    fileChooser->launchAsync (chooserFlags, [this] (const FileChooser& fc)
+    {
+        auto file = fc.getResult();
+        if (file.existsAsFile())
+        {
+            filenameLabel.setText (file.getFileName(), dontSendNotification);
+            audioProcessor.transportSourceCreator.requestTransportForURL(URL(file));
+        }
+    });
 }
-
-void AudioFilePlayerAudioProcessorEditor::fileClicked (const File&, const MouseEvent&)          {}
-void AudioFilePlayerAudioProcessorEditor::fileDoubleClicked (const File&)                       {}
-void AudioFilePlayerAudioProcessorEditor::browserRootChanged (const File&)                      {}
 
 void AudioFilePlayerAudioProcessorEditor::changeListenerCallback (ChangeBroadcaster* source)
 {
     if (source == thumbnail.get())
     {
-        audioProcessor.transportSourceCreator.requestTransportForURL(URL(thumbnail->getLastDroppedFile()));
+        auto droppedFile = thumbnail->getLastDroppedFile();
+        if (droppedFile.getLocalFile().existsAsFile())
+        {
+            filenameLabel.setText (droppedFile.getLocalFile().getFileName(), dontSendNotification);
+        }
+        audioProcessor.transportSourceCreator.requestTransportForURL(droppedFile);
     }
 }
 
@@ -358,7 +350,7 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback()
 {
     if( audioProcessor.sourceHasChanged.compareAndSetBool(false, true) )
     {
-        auto& src = audioProcessor.activeSource; //a local copy.  causes a data race, which is weird because activeSource is reference counted, and the reference counting is atomic..
+        auto& src = audioProcessor.activeSource;
         bool hasValidSource = src.get() != nullptr;
         if( hasValidSource )
         {
@@ -373,6 +365,12 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback()
                 zoomSlider.setValue (0, dontSendNotification);
             
                 thumbnail->setURL (activeSource->currentAudioFile);
+                
+                // Update the filename display
+                if (activeSource->currentAudioFile.isLocalFile())
+                {
+                    filenameLabel.setText (activeSource->currentAudioFile.getLocalFile().getFileName(), dontSendNotification);
+                }
             }
         }
 

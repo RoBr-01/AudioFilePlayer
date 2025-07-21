@@ -89,7 +89,6 @@ private:
 };
 
 class AudioFilePlayerAudioProcessorEditor  : public juce::AudioProcessorEditor,
-private FileBrowserListener,
 private ChangeListener,
 public Timer
 {
@@ -104,38 +103,26 @@ public:
     
     void timerCallback() override;
 private:
-    // if this PIP is running inside the demo runner, we'll use the shared device manager instead
     AudioFilePlayerAudioProcessor& audioProcessor;
-    
-    DirectoryContentsList directoryList;
-    FileTreeComponent fileTreeComp {directoryList};
-    // Label explanation { {}, "Select an audio file in the treeview above, and this page will display its waveform, and let you play it.." };
-    
-    /*
-     find the code that configures this
-     */
-//    AudioTransportSource& transportSource;
-//    std::unique_ptr<AudioFormatReaderSource> currentAudioFileSource;
     
     std::unique_ptr<DemoThumbnailComp> thumbnail;
     Label zoomLabel                     { {}, "zoom:" };
     Slider zoomSlider                   { Slider::LinearHorizontal, Slider::NoTextBox };
     ToggleButton followTransportButton  { "Follow Transport" };
     TextButton startStopButton          { "Load an audio file first..." };
+    TextButton chooseFileButton         { "Choose File..." };
+    Label filenameLabel                 { {}, "No file selected" };
     
     ReferencedTransportSourceData::Ptr activeSource;
+    
+    std::unique_ptr<FileChooser> fileChooser;
     
     //==============================================================================
     void startOrStop();
     
     void updateFollowTransportState();
     
-    
-    void selectionChanged() override;
-    
-    void fileClicked (const File&, const MouseEvent&) override;
-    void fileDoubleClicked (const File&) override;
-    void browserRootChanged (const File&) override;
+    void chooseFile();
     
     void changeListenerCallback (ChangeBroadcaster* source) override;
     
@@ -146,4 +133,3 @@ private:
 //==============================================================================
 /**
  */
-
