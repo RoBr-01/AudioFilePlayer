@@ -2,7 +2,7 @@
 # https://github.com/juce-framework/JUCE/blob/master/examples/CMake/AudioPlugin/CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.21)
-project(Template VERSION 0.0.1)
+project(AudioFilePlayer VERSION 0.0.1)
 
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
