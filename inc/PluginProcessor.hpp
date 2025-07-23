@@ -2,69 +2,8 @@
 
 #include <JuceHeader.h>
 
-#include "FIFO.hpp"
+#include "DataStructures.hpp"
 
-template <typename ReferenceCountedType>
-struct ReleasePool : juce::Timer {
-    ReleasePool() {
-        deletionPool.reserve(5000);
-
-        startTimer(1 * 1000);
-    }
-
-    ~ReleasePool() override {
-        stopTimer();
-    }
-
-    using Ptr = typename ReferenceCountedType::Ptr;
-
-    void add(Ptr ptr) {
-        if (ptr == nullptr)
-            return;
-
-        if (juce::MessageManager::getInstance()->isThisTheMessageThread()) {
-            addIfNotAlreadyThere(ptr);
-        } else {
-            if (fifo.push(ptr)) {
-                successfullyAdded.set(true);
-            } else {
-                jassertfalse;
-            }
-        }
-    }
-
-    void timerCallback() override {
-        if (successfullyAdded.compareAndSetBool(false, true)) {
-            Ptr ptr;
-            while (fifo.pull(ptr)) {
-                addIfNotAlreadyThere(ptr);
-                ptr = nullptr;
-            }
-        }
-
-        deletionPool.erase(
-            std::remove_if(
-                deletionPool.begin(),
-                deletionPool.end(),
-                [](const auto& ptr) { return ptr->getReferenceCount() <= 1; }),
-            deletionPool.end());
-    }
-
-   private:
-    Fifo<Ptr, 512> fifo;
-    std::vector<Ptr> deletionPool;
-    juce::Atomic<bool> successfullyAdded{false};
-
-    void addIfNotAlreadyThere(Ptr ptr) {
-        auto found = std::find_if(
-            deletionPool.begin(), deletionPool.end(), [ptr](const auto& elem) {
-                return elem.get() == ptr.get();
-            });
-
-        if (found == deletionPool.end())
-            deletionPool.push_back(ptr);
-    }
-};
 //==============================================================================
 struct ReferencedTransportSourceData : juce::ReferenceCountedObject {
     using Ptr = juce::ReferenceCountedObjectPtr<ReferencedTransportSourceData>;
@@ -148,14 +87,11 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
     Fifo<ReferencedTransportSourceData::Ptr>& transportSourceFifo;
     ReleasePool<ReferencedTransportSourceData>& releasePool;
 
-    // TimeSliceThread& directoryScannerBackgroundThread;
-
     juce::Atomic<bool> urlNeedsProcessingFlag{false};
 
     AudioFormatManager& formatManager;
 };
-/**
- */
+
 class AudioFilePlayerAudioProcessor : public juce::AudioProcessor {
    public:
     //==============================================================================
