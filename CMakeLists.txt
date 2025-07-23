@@ -67,4 +67,5 @@ target_link_libraries(${JUCE_OUTPUT_NAME}
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
+        # juce::juce_recommended_warning_flags
+        )
