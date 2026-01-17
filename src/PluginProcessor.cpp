@@ -9,9 +9,11 @@ AudioFilePlayerAudioProcessor::AudioFilePlayerAudioProcessor()
           BusesProperties()
 #if !JucePlugin_IsMidiEffect
 #if !JucePlugin_IsSynth
-              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withInput(
+                  "Input", juce::AudioChannelSet::discreteChannels(16), true)
 #endif
-              .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+              .withOutput(
+                  "Output", juce::AudioChannelSet::discreteChannels(16), true)
 #endif
       )
 #endif
@@ -80,11 +82,18 @@ void AudioFilePlayerAudioProcessor::prepareToPlay(double sampleRate,
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
     transportSource.prepareToPlay(samplesPerBlock, sampleRate);
+
+    DBG("prepareToPlay called:");
+    DBG("  Sample Rate: " << sampleRate);
+    DBG("  Samples Per Block: " << samplesPerBlock);
+    DBG("  Total Num Input Channels: " << getTotalNumInputChannels());
+    DBG("  Total Num Output Channels: " << getTotalNumOutputChannels());
 }
 
 void AudioFilePlayerAudioProcessor::releaseResources() {
     // When playback stops, you can use this as an opportunity to free up any
     // spare memory, etc.
+    transportSource.releaseResources();
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -94,19 +103,18 @@ bool AudioFilePlayerAudioProcessor::isBusesLayoutSupported(
     juce::ignoreUnused(layouts);
     return true;
 #else
-    // This is the place where you check if the layout is supported.
-    // In this template code we only support mono or stereo.
-    // Some plugin hosts, such as certain GarageBand versions, will only
-    // load plugins that support stereo bus layouts.
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono() &&
-        layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    // Support 1 to 16 channels
+    auto outputChannels = layouts.getMainOutputChannelSet().size();
+
+    if (outputChannels < 1 || outputChannels > 16)
         return false;
 
-    // This checks if the input layout matches the output layout
 #if !JucePlugin_IsSynth
+    // Input and output channel counts must match
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
 #endif
+
     return true;
 #endif
 }
@@ -121,9 +129,6 @@ void AudioFilePlayerAudioProcessor::processBlock(
     // In case we have more outputs than inputs, this code clears any output
     // channels that didn't contain input data, (because these aren't
     // guaranteed to be empty - they may contain garbage).
-    // This is here to avoid people getting screaming feedback
-    // when they first compile a plugin, but obviously you don't need to keep
-    // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
@@ -141,10 +146,28 @@ void AudioFilePlayerAudioProcessor::processBlock(
                                   &directoryScannerBackgroundThread,
                                   activeSource->audioFileSourceSampleRate);
         sourceHasChanged.set(true);
+
+        DBG("Active source changed in processBlock");
+        if (activeSource->currentAudioFileSource.get() != nullptr) {
+            auto* reader =
+                activeSource->currentAudioFileSource->getAudioFormatReader();
+            if (reader != nullptr) {
+                DBG("  New source has " + String(reader->numChannels) +
+                    " channels");
+                DBG("  Transport total length after setSource: " +
+                    String(transportSource.getTotalLength()));
+            }
+        }
     }
 
-    AudioSourceChannelInfo asci(&buffer, 0, buffer.getNumSamples());
-    transportSource.getNextAudioBlock(asci);
+    // Only process if we have an active source
+    if (activeSource != nullptr && transportSource.getTotalLength() > 0) {
+        AudioSourceChannelInfo asci(&buffer, 0, buffer.getNumSamples());
+        transportSource.getNextAudioBlock(asci);
+    } else {
+        // No source loaded, output silence
+        buffer.clear();
+    }
 }
 
 //==============================================================================

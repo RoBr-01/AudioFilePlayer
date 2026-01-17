@@ -1,11 +1,3 @@
-/*
-  ==============================================================================
-
-    This file contains the basic framework code for a JUCE plugin editor.
-
-  ==============================================================================
-*/
-
 #include "PluginEditor.hpp"
 
 #include "PluginProcessor.hpp"
@@ -15,7 +7,10 @@ DemoThumbnailComp::DemoThumbnailComp(AudioFormatManager& formatManager,
                                      AudioTransportSource& source)
     : transportSource(source),
       zoomSlider(slider),
-      thumbnail(512, formatManager, thumbnailCache) {
+      thumbnail(1024,
+                formatManager,
+                thumbnailCache) {  // Increased from 512 to 1024 for better
+                                   // multi-channel support
     thumbnail.addChangeListener(this);
 
     addAndMakeVisible(scrollbar);
@@ -37,10 +32,13 @@ void DemoThumbnailComp::setURL(const URL& url) {
 
 #if !JUCE_IOS
     if (url.isLocalFile()) {
+        DBG("DemoThumbnailComp: Loading local file: "
+            << url.getLocalFile().getFullPathName());
         inputSource = new FileInputSource(url.getLocalFile());
     } else
 #endif
     {
+        DBG("DemoThumbnailComp: Loading URL: " << url.toString(false));
         if (inputSource == nullptr)
             inputSource = new URLInputSource(url);
     }
@@ -48,11 +46,18 @@ void DemoThumbnailComp::setURL(const URL& url) {
     if (inputSource != nullptr) {
         thumbnail.setSource(inputSource);
 
+        DBG("DemoThumbnailComp: Thumbnail total length: "
+            << thumbnail.getTotalLength());
+        DBG("DemoThumbnailComp: Thumbnail num channels: "
+            << thumbnail.getNumChannels());
+
         Range<double> newRange(0.0, thumbnail.getTotalLength());
         scrollbar.setRangeLimits(newRange);
         setRange(newRange);
 
         startTimerHz(40);
+    } else {
+        DBG("DemoThumbnailComp: Failed to create input source!");
     }
 }
 
@@ -89,15 +94,29 @@ void DemoThumbnailComp::paint(Graphics& g) {
 
     if (thumbnail.getTotalLength() > 0.0) {
         auto thumbArea = getLocalBounds();
-
         thumbArea.removeFromBottom(scrollbar.getHeight() + 4);
+
+        // Draw all channels
         thumbnail.drawChannels(g,
                                thumbArea.reduced(2),
                                visibleRange.getStart(),
                                visibleRange.getEnd(),
                                1.0f);
+
+        // Display channel count in top-left corner
+        g.setColour(Colours::white);
+        g.setFont(12.0f);
+        auto numChannels = thumbnail.getNumChannels();
+        g.drawText(
+            String(numChannels) + (numChannels == 1 ? " channel" : " channels"),
+            thumbArea.getX() + 5,
+            thumbArea.getY() + 5,
+            150,
+            20,
+            Justification::centredLeft);
     } else {
         g.setFont(14.0f);
+        g.setColour(Colours::white);
         g.drawFittedText("(No audio file selected)",
                          getLocalBounds(),
                          Justification::centred,
@@ -123,6 +142,7 @@ void DemoThumbnailComp::filesDropped(const StringArray& files,
                                      int /*x*/,
                                      int /*y*/) {
     lastFileDropped = URL(File(files[0]));
+    DBG("DemoThumbnailComp: File dropped: " << lastFileDropped.toString(false));
     sendChangeMessage();
 }
 
@@ -202,6 +222,7 @@ void DemoThumbnailComp::updateCursorPosition() {
                          1.5f,
                          (float)(getHeight() - scrollbar.getHeight())));
 }
+
 //==============================================================================
 AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(
     AudioFilePlayerAudioProcessor& p)
@@ -314,6 +335,7 @@ void AudioFilePlayerAudioProcessorEditor::chooseFile() {
     fileChooser->launchAsync(chooserFlags, [this](const FileChooser& fc) {
         auto file = fc.getResult();
         if (file.existsAsFile()) {
+            DBG("Editor: File chosen: " << file.getFullPathName());
             filenameLabel.setText(file.getFileName(), dontSendNotification);
             audioProcessor.transportSourceCreator.requestTransportForURL(
                 URL(file));
@@ -325,9 +347,12 @@ void AudioFilePlayerAudioProcessorEditor::changeListenerCallback(
     ChangeBroadcaster* source) {
     if (source == thumbnail.get()) {
         auto droppedFile = thumbnail->getLastDroppedFile();
+        DBG("Editor: changeListenerCallback - file dropped");
         if (droppedFile.getLocalFile().existsAsFile()) {
             filenameLabel.setText(droppedFile.getLocalFile().getFileName(),
                                   dontSendNotification);
+            DBG("Editor: Requesting transport for dropped file: "
+                << droppedFile.toString(false));
         }
         audioProcessor.transportSourceCreator.requestTransportForURL(
             droppedFile);
@@ -335,23 +360,28 @@ void AudioFilePlayerAudioProcessorEditor::changeListenerCallback(
 }
 
 void AudioFilePlayerAudioProcessorEditor::timerCallback() {
-    if (audioProcessor.sourceHasChanged.compareAndSetBool(false, true)) {
+    if (audioProcessor.sourceHasChanged.compareAndSetBool(true, false)) {
         auto& src = audioProcessor.activeSource;
         bool hasValidSource = src.get() != nullptr;
+
+        DBG("Editor: timerCallback - sourceHasChanged detected, "
+            "hasValidSource: " +
+            String(hasValidSource ? "true" : "false"));
+
         if (hasValidSource) {
             if (src.get() != activeSource.get()) {
-                // we have a new source!
-                // update the file path in the APVTS.
-                // update the thumbnail.
+                DBG("Editor: New source detected!");
+
                 AudioFilePlayerAudioProcessor::refreshCurrentFileInAPVTS(
                     audioProcessor.apvts, src->currentAudioFile);
                 activeSource = src;
 
                 zoomSlider.setValue(0, dontSendNotification);
 
+                DBG("Editor: Setting URL on thumbnail: " +
+                    activeSource->currentAudioFile.toString(false));
                 thumbnail->setURL(activeSource->currentAudioFile);
 
-                // Update the filename display
                 if (activeSource->currentAudioFile.isLocalFile()) {
                     filenameLabel.setText(
                         activeSource->currentAudioFile.getLocalFile()
@@ -360,14 +390,21 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback() {
                 }
             }
         }
-
-        startStopButton.setEnabled(hasValidSource);
     }
 
-    // update the startStopButton
+    // Check transport length and update button state
+    bool canPlay = audioProcessor.transportSource.getTotalLength() > 0;
+    DBG("Editor: transportSource.getTotalLength() = " +
+        String(audioProcessor.transportSource.getTotalLength()));
+
+    startStopButton.setEnabled(canPlay);
+
     auto isPlaying = audioProcessor.transportSource.isPlaying();
-    if (audioProcessor.transportSource.getTotalLength() > 0)
+    if (canPlay) {
         startStopButton.setButtonText(!isPlaying ? "Start" : "Stop");
+    } else {
+        startStopButton.setButtonText("Load an audio file first...");
+    }
 
     startStopButton.setToggleState(isPlaying, dontSendNotification);
 }

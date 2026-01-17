@@ -76,7 +76,7 @@ struct ReleasePool : juce::Timer {
     }
 
     void timerCallback() override {
-        if (successfullyAdded.compareAndSetBool(false, true)) {
+        if (successfullyAdded.compareAndSetBool(true, false)) {
             Ptr ptr;
             while (fifo.pull(ptr)) {
                 addIfNotAlreadyThere(ptr);

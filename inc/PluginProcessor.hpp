@@ -30,55 +30,80 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
     }
 
     void run() override {
-        // create a referenced transport source if there is a new URL to load
+        DBG("AudioFormatReaderSourceCreator thread started!");
+
         while (!threadShouldExit()) {
-            if (urlNeedsProcessingFlag.compareAndSetBool(false, true)) {
+            // Check if there are URLs waiting to be processed
+            if (urlFifo.getNumAvailableForReading() > 0) {
+                DBG("AudioFormatReaderSourceCreator: URLs available for "
+                    "reading: " +
+                    String(urlFifo.getNumAvailableForReading()));
+
                 juce::URL audioURL;
-                while (urlFifo.getNumAvailableForReading() > 0) {
-                    if (urlFifo.pull(audioURL)) {
-                        // create a new referenced transport source for this
-                        std::unique_ptr<AudioFormatReader> reader;
+                while (urlFifo.pull(audioURL)) {
+                    DBG("AudioFormatReaderSourceCreator: Pulled URL: " +
+                        audioURL.toString(false));
 
-                        if (audioURL.isLocalFile()) {
-                            reader.reset(formatManager.createReaderFor(
-                                audioURL.getLocalFile()));
-                        } else {
-                            auto options = URL::InputStreamOptions(
-                                URL::ParameterHandling::inAddress);
-                            reader.reset(formatManager.createReaderFor(
-                                audioURL.createInputStream(options)));
-                        }
+                    std::unique_ptr<AudioFormatReader> reader;
 
-                        if (reader != nullptr) {
-                            using RTS = ReferencedTransportSourceData;
-                            RTS::Ptr rts = new ReferencedTransportSourceData();
+                    if (audioURL.isLocalFile()) {
+                        DBG("AudioFormatReaderSourceCreator: Creating reader "
+                            "for local file...");
+                        reader.reset(formatManager.createReaderFor(
+                            audioURL.getLocalFile()));
+                    } else {
+                        DBG("AudioFormatReaderSourceCreator: Creating reader "
+                            "for remote URL...");
+                        auto options = URL::InputStreamOptions(
+                            URL::ParameterHandling::inAddress);
+                        reader.reset(formatManager.createReaderFor(
+                            audioURL.createInputStream(options)));
+                    }
 
-                            rts->audioFileSourceSampleRate = reader->sampleRate;
+                    if (reader != nullptr) {
+                        DBG("Loaded audio file: " + audioURL.toString(false));
+                        DBG("Channels: " + String(reader->numChannels));
+                        DBG("Sample Rate: " + String(reader->sampleRate));
+                        DBG("Length: " + String(reader->lengthInSamples));
 
-                            rts->currentAudioFileSource.reset(
-                                new AudioFormatReaderSource(reader.release(),
-                                                            true));
-                            rts->currentAudioFile = audioURL;
+                        using RTS = ReferencedTransportSourceData;
+                        RTS::Ptr rts = new ReferencedTransportSourceData();
 
-                            // add it to the release pool
-                            releasePool.add(rts);
-                            // add it to the transportSourceFifo
-                            transportSourceFifo.push(rts);
-                        }
+                        rts->audioFileSourceSampleRate = reader->sampleRate;
+                        rts->currentAudioFileSource.reset(
+                            new AudioFormatReaderSource(reader.release(),
+                                                        true));
+                        rts->currentAudioFile = audioURL;
+
+                        releasePool.add(rts);
+                        DBG("AudioFormatReaderSourceCreator: Pushing to "
+                            "transport source FIFO");
+                        transportSourceFifo.push(rts);
+                    } else {
+                        DBG("Failed to create reader for: " +
+                            audioURL.toString(false));
                     }
                 }
             }
 
             wait(5);
         }
+
+        DBG("AudioFormatReaderSourceCreator thread exiting!");
     }
 
     bool requestTransportForURL(juce::URL url) {
+        DBG("AudioFormatReaderSourceCreator::requestTransportForURL called "
+            "with: " +
+            url.toString(false));
         if (urlFifo.push(url)) {
-            urlNeedsProcessingFlag.set(true);
+            DBG("AudioFormatReaderSourceCreator: URL pushed to FIFO "
+                "successfully");
+            notify();  // Wake up the thread
             return true;
         }
 
+        DBG("AudioFormatReaderSourceCreator: Failed to push URL to FIFO!");
         return false;
     }
 
