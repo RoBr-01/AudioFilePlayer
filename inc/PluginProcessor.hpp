@@ -171,11 +171,11 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor {
     }
 
    public:
-    AudioFormatManager formatManager;
-    AudioTransportSource transportSource;
+    // AudioFormatManager formatManager;
+    // AudioTransportSource transportSource;
 
-    AudioFormatReaderSourceCreator transportSourceCreator{
-        fifo, pool, formatManager};
+    // AudioFormatReaderSourceCreator transportSourceCreator{
+    //     fifo, pool, formatManager};
 
     juce::Atomic<bool> sourceHasChanged{false};
 
@@ -191,6 +191,13 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor {
 
     Fifo<ReferencedTransportSourceData::Ptr> fifo;
     ReleasePool<ReferencedTransportSourceData> pool;
+
+   public:
+    AudioFormatManager formatManager;
+    AudioTransportSource transportSource;
+
+    AudioFormatReaderSourceCreator transportSourceCreator{
+        fifo, pool, formatManager};
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioFilePlayerAudioProcessor)

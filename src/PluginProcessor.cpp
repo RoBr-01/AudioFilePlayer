@@ -23,7 +23,19 @@ AudioFilePlayerAudioProcessor::AudioFilePlayerAudioProcessor()
         juce::Thread::Priority::normal);
 }
 
-AudioFilePlayerAudioProcessor::~AudioFilePlayerAudioProcessor() {}
+AudioFilePlayerAudioProcessor::~AudioFilePlayerAudioProcessor() {
+    DBG("Destructor: Stopping transport source...");
+    transportSource.setSource(nullptr);
+    transportSource.releaseResources();
+
+    DBG("Destructor: Stopping background thread...");
+    directoryScannerBackgroundThread.stopThread(1000);
+
+    DBG("Destructor: Clearing active source...");
+    activeSource = nullptr;
+
+    DBG("Destructor: Complete");
+}
 
 //==============================================================================
 const juce::String AudioFilePlayerAudioProcessor::getName() const {
