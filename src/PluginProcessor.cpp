@@ -126,18 +126,22 @@ void AudioFilePlayerAudioProcessor::processBlock(
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // In case we have more outputs than inputs, this code clears any output
-    // channels that didn't contain input data, (because these aren't
-    // guaranteed to be empty - they may contain garbage).
+    // Clear unused output channels
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    ReferencedTransportSourceData::Ptr ptr;
-    while (fifo.pull(ptr)) {
-        ;
+    // Check if there's a new source available
+    ReferencedTransportSourceData::Ptr ptr = nullptr;
+
+    // Pull all available sources, keeping only the most recent one
+    ReferencedTransportSourceData::Ptr temp;
+    while (fifo.pull(temp)) {
+        ptr = temp;  // Keep the most recent
     }
 
     if (ptr != nullptr) {
+        DBG("processBlock: Got new source from FIFO");
+
         pool.add(activeSource);
         activeSource = ptr;
         transportSource.stop();
@@ -156,6 +160,7 @@ void AudioFilePlayerAudioProcessor::processBlock(
                     " channels");
                 DBG("  Transport total length after setSource: " +
                     String(transportSource.getTotalLength()));
+                DBG("  sourceHasChanged flag set to: true");
             }
         }
     }

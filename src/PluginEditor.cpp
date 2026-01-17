@@ -32,30 +32,35 @@ void DemoThumbnailComp::setURL(const URL& url) {
 
 #if !JUCE_IOS
     if (url.isLocalFile()) {
-        DBG("DemoThumbnailComp: Loading local file: "
-            << url.getLocalFile().getFullPathName());
+        DBG("DemoThumbnailComp: Loading local file: " +
+            url.getLocalFile().getFullPathName());
+        DBG("DemoThumbnailComp: File exists: " +
+            String(url.getLocalFile().existsAsFile() ? "true" : "false"));
         inputSource = new FileInputSource(url.getLocalFile());
     } else
 #endif
     {
-        DBG("DemoThumbnailComp: Loading URL: " << url.toString(false));
+        DBG("DemoThumbnailComp: Loading URL: " + url.toString(false));
         if (inputSource == nullptr)
             inputSource = new URLInputSource(url);
     }
 
     if (inputSource != nullptr) {
+        DBG("DemoThumbnailComp: Setting source on thumbnail...");
         thumbnail.setSource(inputSource);
 
-        DBG("DemoThumbnailComp: Thumbnail total length: "
-            << thumbnail.getTotalLength());
-        DBG("DemoThumbnailComp: Thumbnail num channels: "
-            << thumbnail.getNumChannels());
+        DBG("DemoThumbnailComp: Thumbnail total length: " +
+            String(thumbnail.getTotalLength()));
+        DBG("DemoThumbnailComp: Thumbnail num channels: " +
+            String(thumbnail.getNumChannels()));
 
         Range<double> newRange(0.0, thumbnail.getTotalLength());
         scrollbar.setRangeLimits(newRange);
         setRange(newRange);
 
         startTimerHz(40);
+
+        repaint();  // Force a repaint
     } else {
         DBG("DemoThumbnailComp: Failed to create input source!");
     }
@@ -90,11 +95,16 @@ void DemoThumbnailComp::setFollowsTransport(bool shouldFollow) {
 
 void DemoThumbnailComp::paint(Graphics& g) {
     g.fillAll(Colours::darkgrey);
-    g.setColour(Colours::lightblue);
+
+    DBG("DemoThumbnailComp::paint() - thumbnail.getTotalLength() = " +
+        String(thumbnail.getTotalLength()));
 
     if (thumbnail.getTotalLength() > 0.0) {
+        g.setColour(Colours::lightblue);
         auto thumbArea = getLocalBounds();
         thumbArea.removeFromBottom(scrollbar.getHeight() + 4);
+
+        DBG("DemoThumbnailComp::paint() - Drawing waveform");
 
         // Draw all channels
         thumbnail.drawChannels(g,
@@ -360,16 +370,25 @@ void AudioFilePlayerAudioProcessorEditor::changeListenerCallback(
 }
 
 void AudioFilePlayerAudioProcessorEditor::timerCallback() {
-    if (audioProcessor.sourceHasChanged.compareAndSetBool(true, false)) {
+    // Use exchange instead of compareAndSetBool
+    if (audioProcessor.sourceHasChanged.exchange(false)) {
+        DBG("Editor: timerCallback - sourceHasChanged was true, now "
+            "processing!");
+
         auto& src = audioProcessor.activeSource;
         bool hasValidSource = src.get() != nullptr;
 
-        DBG("Editor: timerCallback - sourceHasChanged detected, "
-            "hasValidSource: " +
+        DBG("Editor: hasValidSource: " +
             String(hasValidSource ? "true" : "false"));
 
         if (hasValidSource) {
-            if (src.get() != activeSource.get()) {
+            bool isDifferentSource = (activeSource.get() == nullptr) ||
+                                     (src.get() != activeSource.get());
+
+            DBG("Editor: isDifferentSource = " +
+                String(isDifferentSource ? "true" : "false"));
+
+            if (isDifferentSource) {
                 DBG("Editor: New source detected!");
 
                 AudioFilePlayerAudioProcessor::refreshCurrentFileInAPVTS(
@@ -378,9 +397,11 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback() {
 
                 zoomSlider.setValue(0, dontSendNotification);
 
-                DBG("Editor: Setting URL on thumbnail: " +
+                DBG("Editor: About to call thumbnail->setURL()");
+                DBG("Editor: URL is: " +
                     activeSource->currentAudioFile.toString(false));
                 thumbnail->setURL(activeSource->currentAudioFile);
+                DBG("Editor: Called thumbnail->setURL()");
 
                 if (activeSource->currentAudioFile.isLocalFile()) {
                     filenameLabel.setText(
@@ -392,10 +413,8 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback() {
         }
     }
 
-    // Check transport length and update button state
+    // Check transport length and update button state every tick
     bool canPlay = audioProcessor.transportSource.getTotalLength() > 0;
-    DBG("Editor: transportSource.getTotalLength() = " +
-        String(audioProcessor.transportSource.getTotalLength()));
 
     startStopButton.setEnabled(canPlay);
 
