@@ -157,32 +157,47 @@ void AudioFilePlayerAudioProcessor::processBlock(
         pool.add(activeSource);
         activeSource = ptr;
         transportSource.stop();
+
+        // Get channel count from reader
+        auto* reader =
+            activeSource->currentAudioFileSource->getAudioFormatReader();
+        jassert(reader != nullptr);
+
+        int numChannels = reader->numChannels;
+        DBG("Setting transport source with " + String(numChannels) +
+            " channels");
+
+        // Pass the channel count to setSource!
         transportSource.setSource(activeSource->currentAudioFileSource.get(),
                                   32768,
                                   &directoryScannerBackgroundThread,
-                                  activeSource->audioFileSourceSampleRate);
+                                  activeSource->audioFileSourceSampleRate,
+                                  numChannels);
+
         sourceHasChanged.set(true);
 
         DBG("Active source changed in processBlock");
-        if (activeSource->currentAudioFileSource.get() != nullptr) {
-            auto* reader =
-                activeSource->currentAudioFileSource->getAudioFormatReader();
-            if (reader != nullptr) {
-                DBG("  New source has " + String(reader->numChannels) +
-                    " channels");
-                DBG("  Transport total length after setSource: " +
-                    String(transportSource.getTotalLength()));
-                DBG("  sourceHasChanged flag set to: true");
-            }
-        }
+        DBG("  Transport total length: " +
+            String(transportSource.getTotalLength()));
     }
 
     // Only process if we have an active source
     if (activeSource != nullptr && transportSource.getTotalLength() > 0) {
         AudioSourceChannelInfo asci(&buffer, 0, buffer.getNumSamples());
         transportSource.getNextAudioBlock(asci);
+
+        // Debug logging
+        static int processCounter = 0;
+        if (++processCounter % 100 == 0 && transportSource.isPlaying()) {
+            DBG("=== processBlock Analysis ===");
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
+                float rms = buffer.getRMSLevel(ch, 0, buffer.getNumSamples());
+                if (rms > 0.0001f) {
+                    DBG("  Channel " + String(ch) + " RMS: " + String(rms));
+                }
+            }
+        }
     } else {
-        // No source loaded, output silence
         buffer.clear();
     }
 }
