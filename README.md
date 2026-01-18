@@ -1,4 +1,9 @@
-# 🚀 C++ Template Project for JUCE-based audio applications (and plugins).
+# AudioFilePlayer (enhanced)
+
+Based on the AudioFilePlayer by matkatmusic:
+[AudioFilePlayer](https://github.com/matkatmusic/AudioFilePlayer)
+
+Extended to now support arbitrary channel counts, up to a maximum of 16.
 
 ## Requirements
 
@@ -16,17 +21,9 @@ Clone the project using:
 git clone --recurse-submodules <repo link>
 ```
 
-This -should- immediately set-up the submodules as well.
+This *should* immediately set-up the submodules as well.
 
-Next you need to build the AudioPluginHost, which is located in:
-
-```sh
-cwd/lib/JUCE/extras/AudioPluginHost/Builds
-```
-
-There you can pick the platform you are building for, and build the *debug* version of the host.
-
-## Usage
+## Building
 
 This project uses **CMake** for building.
 In the root of the project run the following commands in a terminal window.
@@ -55,10 +52,18 @@ The available build presets corresponding to your configure preset are:
 - build-debug (if you used the debug preset)
 - build-release (if you used the release preset)
 
-The finalfiles will be in:
+The final files will be in:
 
 ```
-cwd/build/build_preset/artefacts/build_preset
+cwd/build/build_preset/artefacts/<build preset name>
 ```
 
 There you will find the AU, Standalone and VST3 builds.
+
+The AudioPluginHost is handy for debugging, though optional, it is located at:
+
+```sh
+cwd/lib/JUCE/extras/AudioPluginHost/Builds
+```
+
+There you can pick the platform you are building for, and build the *debug* version of the host.

@@ -167,12 +167,23 @@ void AudioFilePlayerAudioProcessor::processBlock(
         DBG("Setting transport source with " + String(numChannels) +
             " channels");
 
-        // Pass the channel count to setSource!
         transportSource.setSource(activeSource->currentAudioFileSource.get(),
                                   32768,
                                   &directoryScannerBackgroundThread,
                                   activeSource->audioFileSourceSampleRate,
                                   numChannels);
+
+        // Restore saved playback position if available
+        if (apvts.state.hasProperty("PlaybackPosition")) {
+            double savedPosition =
+                apvts.state.getProperty("PlaybackPosition", 0.0);
+            transportSource.setPosition(savedPosition);
+            DBG("Restored playback position: " + String(savedPosition) +
+                " seconds");
+
+            // Clear it so we don't restore again if another file is loaded
+            apvts.state.removeProperty("PlaybackPosition", nullptr);
+        }
 
         sourceHasChanged.set(true);
 
@@ -215,11 +226,12 @@ juce::AudioProcessorEditor* AudioFilePlayerAudioProcessor::createEditor() {
 //==============================================================================
 void AudioFilePlayerAudioProcessor::getStateInformation(
     juce::MemoryBlock& destData) {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
     if (activeSource != nullptr) {
         refreshCurrentFileInAPVTS(apvts, activeSource->currentAudioFile);
+
+        // Save playback position
+        apvts.state.setProperty(
+            "PlaybackPosition", transportSource.getCurrentPosition(), nullptr);
 
         juce::MemoryOutputStream mos(destData, true);
         apvts.state.writeToStream(mos);
@@ -228,19 +240,19 @@ void AudioFilePlayerAudioProcessor::getStateInformation(
 
 void AudioFilePlayerAudioProcessor::setStateInformation(const void* data,
                                                         int sizeInBytes) {
-    // You should use this method to restore your parameters from this memory
-    // block, whose contents will have been created by the getStateInformation()
-    // call.
     auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
     if (tree.isValid()) {
         apvts.replaceState(tree);
+
         if (auto url = apvts.state.getProperty("CurrentFile", {});
             url != var()) {
             File file(url.toString());
-            jassert(file.existsAsFile());
             if (file.existsAsFile()) {
+                DBG("State restoration: Loading file: " +
+                    file.getFullPathName());
                 juce::URL path(file);
                 transportSourceCreator.requestTransportForURL(path);
+                // Position will be restored after file loads in processBlock
             }
         }
     }
