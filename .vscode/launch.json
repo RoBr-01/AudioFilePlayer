@@ -12,7 +12,6 @@
         {
             "name": "debug standalone",
             "type": "cppdbg",
-            "envFile": "${workspaceFolder}/.vscode/.env",
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "osx": {

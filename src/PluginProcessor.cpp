@@ -9,8 +9,6 @@ AudioFilePlayerAudioProcessor::AudioFilePlayerAudioProcessor()
           BusesProperties()
 #if !JucePlugin_IsMidiEffect
 #if !JucePlugin_IsSynth
-              .withInput(
-                  "Input", juce::AudioChannelSet::discreteChannels(16), true)
 #endif
               .withOutput(
                   "Output", juce::AudioChannelSet::discreteChannels(16), true)
