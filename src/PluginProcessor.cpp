@@ -259,6 +259,13 @@ void AudioFilePlayerAudioProcessor::setStateInformation(const void* data,
 AudioProcessorValueTreeState::ParameterLayout
 AudioFilePlayerAudioProcessor::createParameterLayout() {
     AudioProcessorValueTreeState::ParameterLayout layout;
+
+    // Window size parameters for UI persistence
+    layout.add(std::make_unique<AudioParameterInt>(
+        "windowWidth", "Window Width", 400, 1200, 500));
+    layout.add(std::make_unique<AudioParameterInt>(
+        "windowHeight", "Window Height", 400, 1000, 500));
+
     return layout;
 }
 

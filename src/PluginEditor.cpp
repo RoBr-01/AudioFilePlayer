@@ -1,14 +1,15 @@
 #include "PluginEditor.hpp"
-
 #include "PluginProcessor.hpp"
 
 //==============================================================================
+// DemoThumbnailComp Implementation
 DemoThumbnailComp::DemoThumbnailComp(AudioFormatManager& formatManager,
                                      Slider& slider,
                                      AudioTransportSource& source)
     : transportSource(source),
       zoomSlider(slider),
-      thumbnail(1024, formatManager, thumbnailCache) {
+      thumbnail(1024, formatManager, thumbnailCache)
+{
     addAndMakeVisible(scrollbar);
     scrollbar.setRangeLimits(visibleRange);
     scrollbar.setAutoHide(false);
@@ -20,15 +21,17 @@ DemoThumbnailComp::DemoThumbnailComp(AudioFormatManager& formatManager,
     thumbnail.addChangeListener(this);
     startTimerHz(40);
 
-    setOpaque(true);  // ensures background is always painted
+    setOpaque(true);
 }
 
-DemoThumbnailComp::~DemoThumbnailComp() {
+DemoThumbnailComp::~DemoThumbnailComp()
+{
     scrollbar.removeListener(this);
     thumbnail.removeChangeListener(this);
 }
 
-void DemoThumbnailComp::setURL(const URL& url) {
+void DemoThumbnailComp::setURL(const URL& url)
+{
     std::unique_ptr<InputSource> inputSource;
 
 #if !JUCE_IOS
@@ -38,117 +41,119 @@ void DemoThumbnailComp::setURL(const URL& url) {
 #endif
         inputSource.reset(new URLInputSource(url));
 
-    if (inputSource) {
+    if (inputSource)
+    {
         thumbnail.setSource(inputSource.release());
 
         Range<double> newRange(0.0, thumbnail.getTotalLength());
         scrollbar.setRangeLimits(newRange);
         setRange(newRange);
 
+        waveformNeedsUpdate = true;
         repaint();
     }
 }
 
-URL DemoThumbnailComp::getLastDroppedFile() const noexcept {
-    return lastFileDropped;
-}
-
-void DemoThumbnailComp::setZoomFactor(double amount) {
-    if (thumbnail.getTotalLength() > 0) {
+void DemoThumbnailComp::setZoomFactor(double amount)
+{
+    if (thumbnail.getTotalLength() > 0)
+    {
         auto newScale = jmax(
             0.001,
             thumbnail.getTotalLength() * (1.0 - jlimit(0.0, 0.99, amount)));
         auto timeAtCentre = xToTime((float)getWidth() / 2.0f);
-        setRange(
-            {timeAtCentre - newScale * 0.5, timeAtCentre + newScale * 0.5});
+
+        setRange({timeAtCentre - newScale * 0.5,
+                  timeAtCentre + newScale * 0.5});
     }
 }
 
-void DemoThumbnailComp::setRange(Range<double> newRange) {
+void DemoThumbnailComp::setRange(Range<double> newRange)
+{
     visibleRange = newRange;
     scrollbar.setCurrentRange(visibleRange);
+
+    waveformNeedsUpdate = true; // mark waveform dirty
     updateCursorPosition();
     repaint();
 }
 
-void DemoThumbnailComp::setFollowsTransport(bool shouldFollow) {
+void DemoThumbnailComp::setFollowsTransport(bool shouldFollow)
+{
     isFollowingTransport = shouldFollow;
 }
 
-void DemoThumbnailComp::paint(Graphics& g) {
+void DemoThumbnailComp::paint(Graphics& g)
+{
+    g.fillAll(Colours::darkgrey);
+
+    // Draw waveform image if cached
+    if (!waveformCache.isValid() || waveformNeedsUpdate)
+        updateWaveformImage();
+
+    if (waveformCache.isValid())
+        g.drawImageAt(waveformCache, 0, 0);
+
+    // Draw playhead marker
+    g.setColour(Colours::white);
+    auto x = (int)timeToX(transportSource.getCurrentPosition());
+    g.drawLine((float)x, 0.0f, (float)x, (float)getHeight() - scrollbar.getHeight(), 2.0f);
+}
+
+void DemoThumbnailComp::updateWaveformImage()
+{
+    if (thumbnail.getTotalLength() <= 0 || getWidth() <= 0 || getHeight() <= 0)
+        return;
+
+    waveformCache = Image(Image::ARGB, getWidth(), getHeight(), true);
+    Graphics g(waveformCache);
     g.fillAll(Colours::darkgrey);
 
     auto thumbArea = getLocalBounds();
     thumbArea.removeFromBottom(scrollbar.getHeight() + 4);
 
-    if (thumbnail.getTotalLength() > 0.0) {
-        g.setColour(Colours::lightblue);
-        thumbnail.drawChannels(g,
-                               thumbArea.reduced(2),
-                               visibleRange.getStart(),
-                               visibleRange.getEnd(),
-                               1.0f);
+    g.setColour(Colours::lightblue);
+    thumbnail.drawChannels(g,
+                           thumbArea.reduced(2),
+                           visibleRange.getStart(),
+                           visibleRange.getEnd(),
+                           1.0f);
 
-        g.setColour(Colours::white);
-        g.setFont(12.0f);
-        g.drawText(
-            String(thumbnail.getNumChannels()) +
-                (thumbnail.getNumChannels() == 1 ? " channel" : " channels"),
-            thumbArea.getX() + 5,
-            thumbArea.getY() + 5,
-            150,
-            20,
-            Justification::centredLeft);
-    } else {
-        g.setColour(Colours::white);
-        g.setFont(14.0f);
-        g.drawFittedText(
-            "(No audio file selected)", thumbArea, Justification::centred, 2);
-    }
-
-    updateCursorPosition();
+    waveformNeedsUpdate = false;
 }
 
-void DemoThumbnailComp::resized() {
+void DemoThumbnailComp::resized()
+{
     scrollbar.setBounds(getLocalBounds().removeFromBottom(14).reduced(2));
-    repaint();  // repaint on resize
-}
-
-void DemoThumbnailComp::changeListenerCallback(ChangeBroadcaster*) {
+    waveformNeedsUpdate = true;
     repaint();
 }
 
-bool DemoThumbnailComp::isInterestedInFileDrag(const StringArray&) {
-    return true;
-}
-
-void DemoThumbnailComp::filesDropped(const StringArray& files, int, int) {
+void DemoThumbnailComp::changeListenerCallback(ChangeBroadcaster*) { waveformNeedsUpdate = true; repaint(); }
+bool DemoThumbnailComp::isInterestedInFileDrag(const StringArray&) { return true; }
+void DemoThumbnailComp::filesDropped(const StringArray& files, int, int)
+{
     lastFileDropped = URL(File(files[0]));
     sendChangeMessage();
 }
 
-void DemoThumbnailComp::mouseDown(const MouseEvent& e) {
-    mouseDrag(e);
-}
-
-void DemoThumbnailComp::mouseDrag(const MouseEvent& e) {
+void DemoThumbnailComp::mouseDown(const MouseEvent& e) { mouseDrag(e); }
+void DemoThumbnailComp::mouseDrag(const MouseEvent& e)
+{
     if (canMoveTransport())
         transportSource.setPosition(jmax(0.0, xToTime((float)e.x)));
 }
-
 void DemoThumbnailComp::mouseUp(const MouseEvent&) {}
-
-void DemoThumbnailComp::mouseWheelMove(const MouseEvent&,
-                                       const MouseWheelDetails& wheel) {
+void DemoThumbnailComp::mouseWheelMove(const MouseEvent&, const MouseWheelDetails& wheel)
+{
     if (thumbnail.getTotalLength() <= 0)
         return;
 
     auto newStart = visibleRange.getStart() -
                     wheel.deltaX * visibleRange.getLength() / 10.0;
-    newStart =
-        jlimit(0.0,
-               jmax(0.0, thumbnail.getTotalLength() - visibleRange.getLength()),
-               newStart);
+    newStart = jlimit(0.0,
+                      jmax(0.0, thumbnail.getTotalLength() - visibleRange.getLength()),
+                      newStart);
 
     if (canMoveTransport())
         setRange({newStart, newStart + visibleRange.getLength()});
@@ -159,28 +164,33 @@ void DemoThumbnailComp::mouseWheelMove(const MouseEvent&,
     repaint();
 }
 
-float DemoThumbnailComp::timeToX(const double time) const {
+float DemoThumbnailComp::timeToX(const double time) const
+{
     if (visibleRange.getLength() <= 0)
-        return 0;
+        return 0.0f;
     return (float)getWidth() *
            (float)((time - visibleRange.getStart()) / visibleRange.getLength());
 }
 
-double DemoThumbnailComp::xToTime(const float x) const {
+double DemoThumbnailComp::xToTime(const float x) const
+{
     return (x / (float)getWidth()) * visibleRange.getLength() +
            visibleRange.getStart();
 }
 
-bool DemoThumbnailComp::canMoveTransport() const noexcept {
+bool DemoThumbnailComp::canMoveTransport() const noexcept
+{
     return !(isFollowingTransport && transportSource.isPlaying());
 }
 
-void DemoThumbnailComp::scrollBarMoved(ScrollBar*, double newRangeStart) {
+void DemoThumbnailComp::scrollBarMoved(ScrollBar*, double newRangeStart)
+{
     if (!(isFollowingTransport && transportSource.isPlaying()))
         setRange(visibleRange.movedToStartAt(newRangeStart));
 }
 
-void DemoThumbnailComp::timerCallback() {
+void DemoThumbnailComp::timerCallback()
+{
     if (canMoveTransport())
         updateCursorPosition();
     else
@@ -189,7 +199,8 @@ void DemoThumbnailComp::timerCallback() {
                                         visibleRange.getLength() / 2.0));
 }
 
-void DemoThumbnailComp::updateCursorPosition() {
+void DemoThumbnailComp::updateCursorPosition()
+{
     currentPositionMarker.setBounds(
         (int)timeToX(transportSource.getCurrentPosition()) - 1,
         0,
@@ -198,11 +209,18 @@ void DemoThumbnailComp::updateCursorPosition() {
 }
 
 //==============================================================================
+// AudioFilePlayerAudioProcessorEditor Implementation
 AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(
     AudioFilePlayerAudioProcessor& p)
-    : AudioProcessorEditor(&p), audioProcessor(p) {
+    : AudioProcessorEditor(&p), audioProcessor(p)
+{
     setResizable(true, true);
     setResizeLimits(400, 400, 1200, 1000);
+
+    // Restore size from APVTS if available
+    int w = (int)audioProcessor.apvts.getRawParameterValue("windowWidth")->load();
+    int h = (int)audioProcessor.apvts.getRawParameterValue("windowHeight")->load();
+    setSize(w, h);
 
     addAndMakeVisible(zoomLabel);
     zoomLabel.setFont(Font(15.0f, Font::plain));
@@ -217,8 +235,7 @@ AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(
     chooseFileButton.onClick = [this] { chooseFile(); };
 
     addAndMakeVisible(filenameLabel);
-    filenameLabel.setColour(Label::backgroundColourId,
-                            Colours::white.withAlpha(0.8f));
+    filenameLabel.setColour(Label::backgroundColourId, Colours::white.withAlpha(0.8f));
     filenameLabel.setColour(Label::outlineColourId, Colours::grey);
     filenameLabel.setColour(Label::textColourId, Colours::black);
 
@@ -245,20 +262,26 @@ AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(
     initializeWithExistingState();
     startTimerHz(50);
     setOpaque(true);
-    setSize(500, 500);
 }
 
-AudioFilePlayerAudioProcessorEditor::~AudioFilePlayerAudioProcessorEditor() {
+AudioFilePlayerAudioProcessorEditor::~AudioFilePlayerAudioProcessorEditor()
+{
     if (thumbnail)
         thumbnail->removeChangeListener(this);
+
+    // Save size to APVTS
+    audioProcessor.apvts.getParameterAsValue("windowWidth") = getWidth();
+    audioProcessor.apvts.getParameterAsValue("windowHeight") = getHeight();
 }
 
-void AudioFilePlayerAudioProcessorEditor::paint(Graphics& g) {
+void AudioFilePlayerAudioProcessorEditor::paint(Graphics& g)
+{
     g.fillAll(getUIColourIfAvailable(
         LookAndFeel_V4::ColourScheme::UIColour::windowBackground));
 }
 
-void AudioFilePlayerAudioProcessorEditor::resized() {
+void AudioFilePlayerAudioProcessorEditor::resized()
+{
     auto r = getLocalBounds().reduced(4);
     auto controls = r.removeFromBottom(140);
 
@@ -279,9 +302,16 @@ void AudioFilePlayerAudioProcessorEditor::resized() {
         thumbnail->setBounds(r);
         thumbnail->repaint();
     }
+
+    // save size to APVTS
+    audioProcessor.apvts.getParameterAsValue("windowWidth") = getWidth();
+    audioProcessor.apvts.getParameterAsValue("windowHeight") = getHeight();
 }
 
-void AudioFilePlayerAudioProcessorEditor::startOrStop() {
+//==============================================================================
+// Button callbacks
+void AudioFilePlayerAudioProcessorEditor::startOrStop()
+{
     auto shouldPlay = startStopButton.getToggleState();
     if (shouldPlay)
         audioProcessor.transportSource.start();
@@ -289,54 +319,54 @@ void AudioFilePlayerAudioProcessorEditor::startOrStop() {
         audioProcessor.transportSource.stop();
 }
 
-void AudioFilePlayerAudioProcessorEditor::updateFollowTransportState() {
+void AudioFilePlayerAudioProcessorEditor::updateFollowTransportState()
+{
     thumbnail->setFollowsTransport(followTransportButton.getToggleState());
 }
 
-void AudioFilePlayerAudioProcessorEditor::chooseFile() {
+void AudioFilePlayerAudioProcessorEditor::chooseFile()
+{
     fileChooser.reset(new FileChooser(
         "Choose an audio file...",
         File::getSpecialLocation(File::userHomeDirectory),
         audioProcessor.formatManager.getWildcardForAllFormats()));
 
-    auto chooserFlags =
-        FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles;
+    auto chooserFlags = FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles;
 
     fileChooser->launchAsync(chooserFlags, [this](const FileChooser& fc) {
         auto file = fc.getResult();
         if (file.existsAsFile()) {
             filenameLabel.setText(file.getFileName(), dontSendNotification);
-            audioProcessor.transportSourceCreator.requestTransportForURL(
-                URL(file));
+            audioProcessor.transportSourceCreator.requestTransportForURL(URL(file));
         }
     });
 }
 
-void AudioFilePlayerAudioProcessorEditor::changeListenerCallback(
-    ChangeBroadcaster* source) {
+//==============================================================================
+// ChangeListener
+void AudioFilePlayerAudioProcessorEditor::changeListenerCallback(ChangeBroadcaster* source)
+{
     if (source == thumbnail.get()) {
         auto droppedFile = thumbnail->getLastDroppedFile();
         if (droppedFile.getLocalFile().existsAsFile()) {
-            filenameLabel.setText(droppedFile.getLocalFile().getFileName(),
-                                  dontSendNotification);
+            filenameLabel.setText(droppedFile.getLocalFile().getFileName(), dontSendNotification);
         }
-        audioProcessor.transportSourceCreator.requestTransportForURL(
-            droppedFile);
+        audioProcessor.transportSourceCreator.requestTransportForURL(droppedFile);
     }
 }
 
-void AudioFilePlayerAudioProcessorEditor::initializeWithExistingState() {
+//==============================================================================
+// Initialize state
+void AudioFilePlayerAudioProcessorEditor::initializeWithExistingState()
+{
     if (audioProcessor.activeSource != nullptr) {
         auto& src = audioProcessor.activeSource;
         activeSource = src;
 
         thumbnail->setURL(src->currentAudioFile);
-        repaint();
 
         if (src->currentAudioFile.isLocalFile()) {
-            filenameLabel.setText(
-                src->currentAudioFile.getLocalFile().getFileName(),
-                dontSendNotification);
+            filenameLabel.setText(src->currentAudioFile.getLocalFile().getFileName(), dontSendNotification);
         }
 
         bool canPlay = audioProcessor.transportSource.getTotalLength() > 0;
@@ -352,12 +382,14 @@ void AudioFilePlayerAudioProcessorEditor::initializeWithExistingState() {
     }
 }
 
-void AudioFilePlayerAudioProcessorEditor::timerCallback() {
+//==============================================================================
+// Timer callback
+void AudioFilePlayerAudioProcessorEditor::timerCallback()
+{
     // Handle any source changes
     if (audioProcessor.sourceHasChanged.exchange(false)) {
         auto& src = audioProcessor.activeSource;
         if (src != nullptr && src.get() != activeSource.get()) {
-            // New source detected
             activeSource = src;
 
             AudioFilePlayerAudioProcessor::refreshCurrentFileInAPVTS(
@@ -365,12 +397,9 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback() {
 
             zoomSlider.setValue(0, dontSendNotification);
             thumbnail->setURL(src->currentAudioFile);
-            repaint();
 
             if (src->currentAudioFile.isLocalFile()) {
-                filenameLabel.setText(
-                    src->currentAudioFile.getLocalFile().getFileName(),
-                    dontSendNotification);
+                filenameLabel.setText(src->currentAudioFile.getLocalFile().getFileName(), dontSendNotification);
             }
         }
     }
@@ -386,4 +415,9 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback() {
         startStopButton.setButtonText("Load an audio file first...");
 
     startStopButton.setToggleState(isPlaying, dontSendNotification);
+}
+
+URL DemoThumbnailComp::getLastDroppedFile() const noexcept
+{
+    return lastFileDropped;
 }

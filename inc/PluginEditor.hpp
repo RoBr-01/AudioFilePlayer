@@ -1,64 +1,56 @@
 #pragma once
 
 #include <JuceHeader.h>
-
 #include "PluginProcessor.hpp"
 
 using namespace juce;
 
+// Helper to get consistent UI colours
 inline Colour getUIColourIfAvailable(
     LookAndFeel_V4::ColourScheme::UIColour uiColour,
-    Colour fallback = Colour(0xff4d4d4d)) noexcept {
-    if (auto* v4 = dynamic_cast<LookAndFeel_V4*>(
-            &LookAndFeel::getDefaultLookAndFeel()))
+    Colour fallback = Colour(0xff4d4d4d)) noexcept
+{
+    if (auto* v4 = dynamic_cast<LookAndFeel_V4*>(&LookAndFeel::getDefaultLookAndFeel()))
         return v4->getCurrentColourScheme().getUIColour(uiColour);
 
     return fallback;
 }
 
+//==============================================================================
+// Thumbnail component for waveform display
 class DemoThumbnailComp : public Component,
                           public ChangeListener,
                           public FileDragAndDropTarget,
                           public ChangeBroadcaster,
                           private ScrollBar::Listener,
-                          private Timer {
-   public:
+                          private Timer
+{
+public:
     DemoThumbnailComp(AudioFormatManager& formatManager,
                       Slider& slider,
                       AudioTransportSource& source);
-
     ~DemoThumbnailComp() override;
 
     void setURL(const URL& url);
-
     URL getLastDroppedFile() const noexcept;
-
     void setZoomFactor(double amount);
-
     void setRange(Range<double> newRange);
-
     void setFollowsTransport(bool shouldFollow);
 
     void paint(Graphics& g) override;
-
     void resized() override;
 
     void changeListenerCallback(ChangeBroadcaster*) override;
 
     bool isInterestedInFileDrag(const StringArray& /*files*/) override;
-
     void filesDropped(const StringArray& files, int /*x*/, int /*y*/) override;
 
     void mouseDown(const MouseEvent& e) override;
-
     void mouseDrag(const MouseEvent& e) override;
+    void mouseUp(const MouseEvent& e) override;
+    void mouseWheelMove(const MouseEvent&, const MouseWheelDetails& wheel) override;
 
-    void mouseUp(const MouseEvent&) override;
-
-    void mouseWheelMove(const MouseEvent&,
-                        const MouseWheelDetails& wheel) override;
-
-   private:
+private:
     AudioTransportSource& transportSource;
     Slider& zoomSlider;
     ScrollBar scrollbar{false};
@@ -71,35 +63,36 @@ class DemoThumbnailComp : public Component,
 
     DrawableRectangle currentPositionMarker;
 
+    Image waveformCache;
+    bool waveformNeedsUpdate = true;
+
     float timeToX(const double time) const;
-
     double xToTime(const float x) const;
-
     bool canMoveTransport() const noexcept;
 
-    void scrollBarMoved(ScrollBar* scrollBarThatHasMoved,
-                        double newRangeStart) override;
-
+    void scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart) override;
     void timerCallback() override;
-
     void updateCursorPosition();
+    void updateWaveformImage();
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DemoThumbnailComp)
 };
 
-class AudioFilePlayerAudioProcessorEditor : public juce::AudioProcessorEditor,
+//==============================================================================
+// Main Audio Processor Editor
+class AudioFilePlayerAudioProcessorEditor : public AudioProcessorEditor,
                                             private ChangeListener,
-                                            public Timer {
-   public:
+                                            public Timer
+{
+public:
     AudioFilePlayerAudioProcessorEditor(AudioFilePlayerAudioProcessor& p);
-
     ~AudioFilePlayerAudioProcessorEditor() override;
 
     void paint(Graphics& g) override;
-
     void resized() override;
-
     void timerCallback() override;
 
-   private:
+private:
     AudioFilePlayerAudioProcessor& audioProcessor;
 
     std::unique_ptr<DemoThumbnailComp> thumbnail;
@@ -111,20 +104,13 @@ class AudioFilePlayerAudioProcessorEditor : public juce::AudioProcessorEditor,
     Label filenameLabel{{}, "No file selected"};
 
     ReferencedTransportSourceData::Ptr activeSource;
-
     std::unique_ptr<FileChooser> fileChooser;
 
-    //==============================================================================
     void startOrStop();
-
     void updateFollowTransportState();
-
     void chooseFile();
-
     void changeListenerCallback(ChangeBroadcaster* source) override;
-
     void initializeWithExistingState();
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(
-        AudioFilePlayerAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioFilePlayerAudioProcessorEditor)
 };
