@@ -280,6 +280,8 @@ AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(
     startStopButton.setColour(TextButton::textColourOffId, Colours::black);
     startStopButton.onClick = [this] { startOrStop(); };
 
+    initializeWithExistingState();
+    
     startTimerHz(50);
     setOpaque(true);
     setSize(500, 500);
@@ -426,4 +428,51 @@ void AudioFilePlayerAudioProcessorEditor::timerCallback() {
     }
 
     startStopButton.setToggleState(isPlaying, dontSendNotification);
+}
+
+void AudioFilePlayerAudioProcessorEditor::initializeWithExistingState()
+{
+    // Check if processor already has an active source
+    if (audioProcessor.activeSource != nullptr)
+    {
+        auto& src = audioProcessor.activeSource;
+        
+        // Synchronize editor state with processor state
+        activeSource = src;
+        
+        // Update thumbnail with existing file
+        thumbnail->setURL(src->currentAudioFile);
+        
+        // Update filename label
+        if (src->currentAudioFile.isLocalFile())
+        {
+            filenameLabel.setText(src->currentAudioFile.getLocalFile().getFileName(),
+                                 dontSendNotification);
+        }
+        
+        // Update transport button state
+        bool canPlay = audioProcessor.transportSource.getTotalLength() > 0;
+        startStopButton.setEnabled(canPlay);
+        
+        auto isPlaying = audioProcessor.transportSource.isPlaying();
+        if (canPlay)
+        {
+            startStopButton.setButtonText(!isPlaying ? "Start" : "Stop");
+        }
+        else
+        {
+            startStopButton.setButtonText("Load an audio file first...");
+        }
+        
+        startStopButton.setToggleState(isPlaying, dontSendNotification);
+        
+        DBG("Editor initialized with existing processor state");
+        DBG("  File: " + src->currentAudioFile.toString(false));
+        DBG("  Can play: " + String(canPlay ? "true" : "false"));
+        DBG("  Is playing: " + String(isPlaying ? "true" : "false"));
+    }
+    else
+    {
+        DBG("Editor initialized with no existing processor state");
+    }
 }

@@ -1,17 +1,32 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(lldb) Launch",
+            "name": "debug plug-in",
             "type": "cppdbg",
             "request": "launch",
-            "cwd": ".",
-            "program": "${workspaceFolder}/lib/JUCE/extras/AudioPluginHost/Builds/MacOSX/build/Debug/AudioPluginHost.app/Contents/MacOS/AudioPluginHost",
+            "cwd": "${workspaceFolder}",
+            "program": "${config:AUDIOPLUGINHOST_PATH}",
             "MIMode": "lldb"
+        },
+        {
+            "name": "debug standalone",
+            "type": "cppdbg",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "osx": {
+                "program": "${workspaceFolder}/build/debug/${config:PROJECT_NAME}_debug_artefacts/Debug/Standalone/${config:PROJECT_NAME}_debug.app/Contents/MacOS/${config:PROJECT_NAME}_debug",
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "program": "${workspaceFolder}/build/debug/${config:PROJECT_NAME}_debug_artefacts/Debug/Standalone/${config:PROJECT_NAME}_debug.exe",
+                "MIMode": "gdb"
+            },
+            "linux": {
+                "program": "${workspaceFolder}/build/debug/${config:PROJECT_NAME}_debug_artefacts/Debug/Standalone/${config:PROJECT_NAME}_debug",
+                "MIMode": "gdb"
+            }
         }
-
     ]
 }
