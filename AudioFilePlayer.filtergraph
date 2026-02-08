@@ -61,17 +61,31 @@
       </OUTPUTS>
     </LAYOUT>
   </FILTER>
-  <FILTER uid="17" x="0.28125" y="0.360655737704918" useARA="0" uiLastX_Normal="262"
-          uiLastY_Normal="145" uiopen_Normal="0">
-    <PLUGIN name="AudioFilePlayer" format="AudioUnit" category="Effect" manufacturer="RoBr"
-            version="0.0.1" file="AudioUnit:Effects/aufx,RB01,RoBr" uniqueId="6158143b"
-            isInstrument="0" fileTime="0" infoUpdateTime="19c3edd0487" numInputs="16"
-            numOutputs="16" isShell="0" hasARAExtension="0" uid="6158143b"/>
-    <STATE>191.hAGaoMGcv.y0AHv.DTfAGfPBJHwDTTAWsEla0YVXiQWcxUlbTQVXzEFWkwVYsUlaz0hag0VYWMWchQWdvU1U1Ulbyk1atQEc4AWYT4VXsUlDR8lPxAjzKvPCPDULQISzN7PTvTURtAWczEsCQX0S0QGb0QmDRIDLw.A.RDVclgGVU4FcoQGakQFBWPRJ13iQKAUUVsUWeIFYp0Fc4sGf........AD..........V....................jH</STATE>
+  <FILTER uid="18" x="0.30125" y="0.4180327868852459" useARA="0" uiLastX_Normal="44"
+          uiLastY_Normal="103" uiopen_Normal="1">
+    <PLUGIN name="AudioFilePlayer_debug" format="AudioUnit" category="Effect"
+            manufacturer="RoBr" version="0.0.1" file="AudioUnit:Effects/aufx,RB01,RoBr"
+            uniqueId="6158143b" isInstrument="0" fileTime="0" infoUpdateTime="19c3f0d7890"
+            numInputs="0" numOutputs="16" isShell="0" hasARAExtension="0"
+            uid="6158143b"/>
+    <STATE>375.hAGaoMGcv.C1AHv.DTfAGfPBJr.DQHwDTvUag4VclE1XzUmbkIGUjEFcgwUYrUVak4Fcs3VXsU1UyUmXzkGbkckckI2bo8laTQWdvU1WP7fZ0MVYPwVcmklaSQWXzUFUtEVakIgTuIjb.EMCMDkLQ6vCQAiUOUGcvUGcRHkPvDCD.HQX0YFdOAglPI2avUlbzkVYyAP.BLTcxIWYtQmQowVY.DfXE7RUyUlby8hbuIVZtIlbkU2YkwVag41buHUYv81buzDRRQkQe8zSP8hbkM2K43RLtXCHEgWXsAGakM2KMElb1klafbTX4UFHs.xUnEFcyAxQuklaf7jaekiKw3hMtbWX1A.TrEVdhE1XqA0aykFco8la.DPBD............fUUtQWZzwVYjA.B.jA.l.vJ.fC..A.R.zD.eA.Y.jF.pAPa.7F.xA.c.rG..Bff.bX.j........HP..........TA..................DPK</STATE>
     <LAYOUT>
-      <INPUTS>
+      <INPUTS/>
+      <OUTPUTS>
         <BUS index="0" layout="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"/>
-      </INPUTS>
+      </OUTPUTS>
+    </LAYOUT>
+  </FILTER>
+  <FILTER uid="19" x="0.3325" y="0.5471311475409836" useARA="0" uiLastX_Normal="562"
+          uiLastY_Normal="104" uiopen_Normal="1">
+    <PLUGIN name="AudioFilePlayer" format="VST3" category="Fx" manufacturer="RoBr"
+            version="0.0.1" file="/Users/robinbreugelmans/Library/Audio/Plug-Ins/VST3/AudioFilePlayer.vst3"
+            uniqueId="9c234d89" isInstrument="0" fileTime="19c3f07b770" infoUpdateTime="19c3f0d7891"
+            numInputs="0" numOutputs="16" isShell="0" hasARAExtension="0"
+            uid="4db80134"/>
+    <STATE>398.VMjLgTX....O+fWarAhckI2bo8la8HRLt.iHfTlai8FYo41Y8HRUTYTK3HxO9.BOVMEUy.Ea0cVZtMEcgQWY9vSRC8Vav8lak4Fc9HSLz3BTIISX1UEaho2ZVkUdAAkKBwDUigWRWkEcQ0VTucmUY4BQlgUQ2HUU4UEahkGNnIVcIYkVzkDahsVUxj0Z2YUXmQSLhUGRUkkc3DiX0oGQRIUTqEUY3n2TPgCZhsVSxrDMyHESzg0PHUzYWg0bAcTXq0jLK0TQrIVLqwVXlIFUXQSUFgzbtfWUtUjQikWP3EUcqwVXlciZgU1ZoszcyfVSzI1UXESPtPkbEYEYnUTLXEWPvDVdqYzXugCag4BQPIDQt3hKt3hKt3hKt3hKt3hKt3hKt3hKt3hRUACTEEzZh8VVWgkdUYTTmE0UX4BQP4hPqcjXm0jLh4BQP4xPt.0Qt3hKt3hKt3hKtQUUCUEQTg2ZrM1YQcUVDUjQicVP77RRC8Vav8lak4Fc9vyKVMEUy.Ea0cVZtMEcgQWY9..</STATE>
+    <LAYOUT>
+      <INPUTS/>
       <OUTPUTS>
         <BUS index="0" layout="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"/>
       </OUTPUTS>
