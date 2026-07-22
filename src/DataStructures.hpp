@@ -108,4 +108,4 @@ struct ReleasePool : juce::Timer {
     }
 };
 
-#endif /* DATASTRUCTURES_HPP */
+#endif/* DATASTRUCTURES_HPP */

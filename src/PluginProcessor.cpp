@@ -226,14 +226,12 @@ void AudioFilePlayerAudioProcessor::getStateInformation(
     juce::MemoryBlock& destData) {
     if (activeSource != nullptr) {
         refreshCurrentFileInAPVTS(apvts, activeSource->currentAudioFile);
-
-        // Save playback position
         apvts.state.setProperty(
             "PlaybackPosition", transportSource.getCurrentPosition(), nullptr);
-
-        juce::MemoryOutputStream mos(destData, true);
-        apvts.state.writeToStream(mos);
     }
+
+    juce::MemoryOutputStream mos(destData, true);
+    apvts.state.writeToStream(mos);
 }
 
 void AudioFilePlayerAudioProcessor::setStateInformation(const void* data,
@@ -241,6 +239,8 @@ void AudioFilePlayerAudioProcessor::setStateInformation(const void* data,
     auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
     if (tree.isValid()) {
         apvts.replaceState(tree);
+        DBG("State width = " +
+            apvts.state.getProperty("windowWidth", -1).toString());
 
         if (auto url = apvts.state.getProperty("CurrentFile", {});
             url != var()) {
@@ -261,10 +261,10 @@ AudioFilePlayerAudioProcessor::createParameterLayout() {
     AudioProcessorValueTreeState::ParameterLayout layout;
 
     // Window size parameters for UI persistence
-    layout.add(std::make_unique<AudioParameterInt>(
-        "windowWidth", "Window Width", 400, 1200, 500));
-    layout.add(std::make_unique<AudioParameterInt>(
-        "windowHeight", "Window Height", 400, 1000, 500));
+    // layout.add(std::make_unique<AudioParameterInt>(
+    //     "windowWidth", "Window Width", 400, 1200, 500));
+    // layout.add(std::make_unique<AudioParameterInt>(
+    //     "windowHeight", "Window Height", 400, 1000, 500));
 
     return layout;
 }
