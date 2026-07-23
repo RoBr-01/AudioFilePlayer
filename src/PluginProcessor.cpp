@@ -4,18 +4,8 @@
 
 //==============================================================================
 AudioFilePlayerAudioProcessor::AudioFilePlayerAudioProcessor()
-#ifndef JucePlugin_PreferredChannelConfigurations
-    : AudioProcessor(
-          BusesProperties()
-#if !JucePlugin_IsMidiEffect
-#if !JucePlugin_IsSynth
-#endif
-              .withOutput(
-                  "Output", juce::AudioChannelSet::discreteChannels(16), true)
-#endif
-      )
-#endif
-{
+    : AudioProcessor(BusesProperties().withOutput(
+          "Output", juce::AudioChannelSet::discreteChannels(16), true)) {
     formatManager.registerBasicFormats();
     directoryScannerBackgroundThread.startThread(
         juce::Thread::Priority::normal);

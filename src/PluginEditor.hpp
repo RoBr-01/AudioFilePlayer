@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+
 #include "PluginProcessor.hpp"
 
 using namespace juce;
@@ -8,9 +9,9 @@ using namespace juce;
 // Helper to get consistent UI colours
 inline Colour getUIColourIfAvailable(
     LookAndFeel_V4::ColourScheme::UIColour uiColour,
-    Colour fallback = Colour(0xff4d4d4d)) noexcept
-{
-    if (auto* v4 = dynamic_cast<LookAndFeel_V4*>(&LookAndFeel::getDefaultLookAndFeel()))
+    Colour fallback = Colour(0xff4d4d4d)) noexcept {
+    if (auto* v4 = dynamic_cast<LookAndFeel_V4*>(
+            &LookAndFeel::getDefaultLookAndFeel()))
         return v4->getCurrentColourScheme().getUIColour(uiColour);
 
     return fallback;
@@ -23,10 +24,10 @@ class DemoThumbnailComp : public Component,
                           public FileDragAndDropTarget,
                           public ChangeBroadcaster,
                           private ScrollBar::Listener,
-                          private Timer
-{
-public:
+                          private Timer {
+   public:
     DemoThumbnailComp(AudioFormatManager& formatManager,
+                      AudioThumbnailCache& cacheToUse,
                       Slider& slider,
                       AudioTransportSource& source);
     ~DemoThumbnailComp() override;
@@ -48,9 +49,10 @@ public:
     void mouseDown(const MouseEvent& e) override;
     void mouseDrag(const MouseEvent& e) override;
     void mouseUp(const MouseEvent& e) override;
-    void mouseWheelMove(const MouseEvent&, const MouseWheelDetails& wheel) override;
+    void mouseWheelMove(const MouseEvent&,
+                        const MouseWheelDetails& wheel) override;
 
-private:
+   private:
     AudioTransportSource& transportSource;
     Slider& zoomSlider;
     ScrollBar scrollbar{false};
@@ -70,7 +72,8 @@ private:
     double xToTime(const float x) const;
     bool canMoveTransport() const noexcept;
 
-    void scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart) override;
+    void scrollBarMoved(ScrollBar* scrollBarThatHasMoved,
+                        double newRangeStart) override;
     void timerCallback() override;
     void updateCursorPosition();
     void updateWaveformImage();
@@ -82,9 +85,8 @@ private:
 // Main Audio Processor Editor
 class AudioFilePlayerAudioProcessorEditor : public AudioProcessorEditor,
                                             private ChangeListener,
-                                            public Timer
-{
-public:
+                                            public Timer {
+   public:
     AudioFilePlayerAudioProcessorEditor(AudioFilePlayerAudioProcessor& p);
     ~AudioFilePlayerAudioProcessorEditor() override;
 
@@ -92,7 +94,7 @@ public:
     void resized() override;
     void timerCallback() override;
 
-private:
+   private:
     AudioFilePlayerAudioProcessor& audioProcessor;
 
     std::unique_ptr<DemoThumbnailComp> thumbnail;
@@ -112,5 +114,6 @@ private:
     void changeListenerCallback(ChangeBroadcaster* source) override;
     void initializeWithExistingState();
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioFilePlayerAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(
+        AudioFilePlayerAudioProcessorEditor)
 };

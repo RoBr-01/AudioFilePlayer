@@ -65,51 +65,68 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
                         DBG("Channels: " + String(reader->numChannels));
                         DBG("Sample Rate: " + String(reader->sampleRate));
                         DBG("Length: " + String(reader->lengthInSamples));
-                        
-                        // Read from 1 second into the file where there should be audio
-                        int64 readPosition = (int64)reader->sampleRate * 60;  // 1 second in
-                        
+
+                        // Read from 1 second into the file where there should
+                        // be audio
+                        int64 readPosition =
+                            (int64)reader->sampleRate * 60;  // 1 second in
+
                         // Test read DIRECTLY from the reader
-                        AudioBuffer<float> testBuffer(reader->numChannels, 1024);
-                        reader->read(&testBuffer, 0, 1024, readPosition, true, true);
-                        
+                        AudioBuffer<float> testBuffer(reader->numChannels,
+                                                      1024);
+                        reader->read(
+                            &testBuffer, 0, 1024, readPosition, true, true);
+
                         DBG("Direct read from AudioFormatReader at 1 second:");
-                        for (int ch = 0; ch < testBuffer.getNumChannels(); ++ch) {
+                        for (int ch = 0; ch < testBuffer.getNumChannels();
+                             ++ch) {
                             float level = testBuffer.getRMSLevel(ch, 0, 1024);
                             if (level > 0.0001f) {
-                                DBG("  Direct channel " + String(ch) + " RMS: " + String(level));
+                                DBG("  Direct channel " + String(ch) +
+                                    " RMS: " + String(level));
                             } else {
-                                DBG("  Direct channel " + String(ch) + " SILENT");
+                                DBG("  Direct channel " + String(ch) +
+                                    " SILENT");
                             }
                         }
-                        
+
                         using RTS = ReferencedTransportSourceData;
                         RTS::Ptr rts = new ReferencedTransportSourceData();
-                    
+
                         rts->audioFileSourceSampleRate = reader->sampleRate;
-                    
+
                         rts->currentAudioFileSource.reset(
-                            new AudioFormatReaderSource(reader.release(), true));
-                        
+                            new AudioFormatReaderSource(reader.release(),
+                                                        true));
+
                         // Test AudioFormatReaderSource at same position
-                        rts->currentAudioFileSource->setNextReadPosition(readPosition);
-                        
-                        AudioBuffer<float> testBuffer2(rts->currentAudioFileSource->getAudioFormatReader()->numChannels, 1024);
+                        rts->currentAudioFileSource->setNextReadPosition(
+                            readPosition);
+
+                        AudioBuffer<float> testBuffer2(
+                            rts->currentAudioFileSource->getAudioFormatReader()
+                                ->numChannels,
+                            1024);
                         AudioSourceChannelInfo testInfo(&testBuffer2, 0, 1024);
-                        rts->currentAudioFileSource->getNextAudioBlock(testInfo);
-                        
-                        DBG("Test read from AudioFormatReaderSource at 1 second:");
-                        for (int ch = 0; ch < testBuffer2.getNumChannels(); ++ch) {
+                        rts->currentAudioFileSource->getNextAudioBlock(
+                            testInfo);
+
+                        DBG("Test read from AudioFormatReaderSource at 1 "
+                            "second:");
+                        for (int ch = 0; ch < testBuffer2.getNumChannels();
+                             ++ch) {
                             float level = testBuffer2.getRMSLevel(ch, 0, 1024);
                             if (level > 0.0001f) {
-                                DBG("  Source channel " + String(ch) + " RMS: " + String(level));
+                                DBG("  Source channel " + String(ch) +
+                                    " RMS: " + String(level));
                             } else {
-                                DBG("  Source channel " + String(ch) + " SILENT");
+                                DBG("  Source channel " + String(ch) +
+                                    " SILENT");
                             }
                         }
-                        
+
                         rts->currentAudioFile = audioURL;
-                    
+
                         releasePool.add(rts);
                         transportSourceFifo.push(rts);
                     }
@@ -228,6 +245,8 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor {
 
     AudioFormatReaderSourceCreator transportSourceCreator{
         fifo, pool, formatManager};
+
+    AudioThumbnailCache thumbnailCache{5};
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioFilePlayerAudioProcessor)

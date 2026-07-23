@@ -5,11 +5,12 @@
 //==============================================================================
 // DemoThumbnailComp Implementation
 DemoThumbnailComp::DemoThumbnailComp(AudioFormatManager& formatManager,
+                                     AudioThumbnailCache& cacheToUse,
                                      Slider& slider,
                                      AudioTransportSource& source)
     : transportSource(source),
       zoomSlider(slider),
-      thumbnail(1024, formatManager, thumbnailCache) {
+      thumbnail(1024, formatManager, cacheToUse) {
     addAndMakeVisible(scrollbar);
     scrollbar.setRangeLimits(visibleRange);
     scrollbar.setAutoHide(false);
@@ -242,6 +243,7 @@ AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(
     };
 
     thumbnail.reset(new DemoThumbnailComp(audioProcessor.formatManager,
+                                          audioProcessor.thumbnailCache,
                                           zoomSlider,
                                           audioProcessor.transportSource));
     addAndMakeVisible(thumbnail.get());
