@@ -33,12 +33,7 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
         DBG("AudioFormatReaderSourceCreator thread started!");
 
         while (!threadShouldExit()) {
-            // Check if there are URLs waiting to be processed
             if (urlFifo.getNumAvailableForReading() > 0) {
-                DBG("AudioFormatReaderSourceCreator: URLs available for "
-                    "reading: " +
-                    String(urlFifo.getNumAvailableForReading()));
-
                 juce::URL audioURL;
                 while (urlFifo.pull(audioURL)) {
                     DBG("AudioFormatReaderSourceCreator: Pulled URL: " +
@@ -47,13 +42,9 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
                     std::unique_ptr<AudioFormatReader> reader;
 
                     if (audioURL.isLocalFile()) {
-                        DBG("AudioFormatReaderSourceCreator: Creating reader "
-                            "for local file...");
                         reader.reset(formatManager.createReaderFor(
                             audioURL.getLocalFile()));
                     } else {
-                        DBG("AudioFormatReaderSourceCreator: Creating reader "
-                            "for remote URL...");
                         auto options = URL::InputStreamOptions(
                             URL::ParameterHandling::inAddress);
                         reader.reset(formatManager.createReaderFor(
@@ -62,33 +53,6 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
 
                     if (reader != nullptr) {
                         DBG("Loaded audio file: " + audioURL.toString(false));
-                        DBG("Channels: " + String(reader->numChannels));
-                        DBG("Sample Rate: " + String(reader->sampleRate));
-                        DBG("Length: " + String(reader->lengthInSamples));
-
-                        // Read from 1 second into the file where there should
-                        // be audio
-                        int64 readPosition =
-                            (int64)reader->sampleRate * 60;  // 1 second in
-
-                        // Test read DIRECTLY from the reader
-                        AudioBuffer<float> testBuffer(reader->numChannels,
-                                                      1024);
-                        reader->read(
-                            &testBuffer, 0, 1024, readPosition, true, true);
-
-                        DBG("Direct read from AudioFormatReader at 1 second:");
-                        for (int ch = 0; ch < testBuffer.getNumChannels();
-                             ++ch) {
-                            float level = testBuffer.getRMSLevel(ch, 0, 1024);
-                            if (level > 0.0001f) {
-                                DBG("  Direct channel " + String(ch) +
-                                    " RMS: " + String(level));
-                            } else {
-                                DBG("  Direct channel " + String(ch) +
-                                    " SILENT");
-                            }
-                        }
 
                         using RTS = ReferencedTransportSourceData;
                         RTS::Ptr rts = new ReferencedTransportSourceData();
@@ -98,32 +62,6 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
                         rts->currentAudioFileSource.reset(
                             new AudioFormatReaderSource(reader.release(),
                                                         true));
-
-                        // Test AudioFormatReaderSource at same position
-                        rts->currentAudioFileSource->setNextReadPosition(
-                            readPosition);
-
-                        AudioBuffer<float> testBuffer2(
-                            rts->currentAudioFileSource->getAudioFormatReader()
-                                ->numChannels,
-                            1024);
-                        AudioSourceChannelInfo testInfo(&testBuffer2, 0, 1024);
-                        rts->currentAudioFileSource->getNextAudioBlock(
-                            testInfo);
-
-                        DBG("Test read from AudioFormatReaderSource at 1 "
-                            "second:");
-                        for (int ch = 0; ch < testBuffer2.getNumChannels();
-                             ++ch) {
-                            float level = testBuffer2.getRMSLevel(ch, 0, 1024);
-                            if (level > 0.0001f) {
-                                DBG("  Source channel " + String(ch) +
-                                    " RMS: " + String(level));
-                            } else {
-                                DBG("  Source channel " + String(ch) +
-                                    " SILENT");
-                            }
-                        }
 
                         rts->currentAudioFile = audioURL;
 
@@ -140,12 +78,7 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
     }
 
     bool requestTransportForURL(juce::URL url) {
-        DBG("AudioFormatReaderSourceCreator::requestTransportForURL called "
-            "with: " +
-            url.toString(false));
         if (urlFifo.push(url)) {
-            DBG("AudioFormatReaderSourceCreator: URL pushed to FIFO "
-                "successfully");
             notify();  // Wake up the thread
             return true;
         }
@@ -159,12 +92,11 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
     Fifo<ReferencedTransportSourceData::Ptr>& transportSourceFifo;
     ReleasePool<ReferencedTransportSourceData>& releasePool;
 
-    juce::Atomic<bool> urlNeedsProcessingFlag{false};
-
     AudioFormatManager& formatManager;
 };
 
-class AudioFilePlayerAudioProcessor : public juce::AudioProcessor {
+class AudioFilePlayerAudioProcessor : public juce::AudioProcessor,
+                                      private juce::Timer {
    public:
     //==============================================================================
     AudioFilePlayerAudioProcessor();
@@ -218,26 +150,29 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor {
     }
 
    public:
-    // AudioFormatManager formatManager;
-    // AudioTransportSource transportSource;
-
-    // AudioFormatReaderSourceCreator transportSourceCreator{
-    //     fifo, pool, formatManager};
-
+    // Set (message thread only, via timerCallback) whenever a new source is
+    // swapped in. The editor polls/consumes this to refresh its UI.
     juce::Atomic<bool> sourceHasChanged{false};
 
     juce::AudioProcessorValueTreeState apvts{
         *this, nullptr, "Properties", createParameterLayout()};
 
+    // Message-thread-owned. Only ever read/written from timerCallback() and
+    // from the editor (also message thread). Never touched from processBlock.
     ReferencedTransportSourceData::Ptr activeSource;
 
    private:
-    juce::Atomic<bool> transportIsPlaying{false};
-
     TimeSliceThread directoryScannerBackgroundThread{"audio file preview"};
 
     Fifo<ReferencedTransportSourceData::Ptr> fifo;
     ReleasePool<ReferencedTransportSourceData> pool;
+
+    // Runs on the message thread. Drains `fifo` and performs the (expensive,
+    // allocating, locking) transportSource.setSource() call here instead of
+    // on the audio thread, which is what was causing the playback stutter
+    // when a new file finished loading while the old one was still playing.
+    void timerCallback() override;
+    void checkForNewSource();
 
    public:
     AudioFormatManager formatManager;

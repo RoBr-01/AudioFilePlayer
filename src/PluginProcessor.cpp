@@ -9,9 +9,15 @@ AudioFilePlayerAudioProcessor::AudioFilePlayerAudioProcessor()
     formatManager.registerBasicFormats();
     directoryScannerBackgroundThread.startThread(
         juce::Thread::Priority::normal);
+
+    // Poll for newly-loaded sources on the message thread. 30Hz is plenty
+    // responsive for "a file finished loading" without being wasteful.
+    startTimerHz(30);
 }
 
 AudioFilePlayerAudioProcessor::~AudioFilePlayerAudioProcessor() {
+    stopTimer();
+
     DBG("Destructor: Stopping transport source...");
     transportSource.setSource(nullptr);
     transportSource.releaseResources();
@@ -59,9 +65,7 @@ double AudioFilePlayerAudioProcessor::getTailLengthSeconds() const {
 }
 
 int AudioFilePlayerAudioProcessor::getNumPrograms() {
-    return 1;  // NB: some hosts don't cope very well if you tell them there are
-               // 0 programs, so this should be at least 1, even if you're not
-               // really implementing programs.
+    return 1;
 }
 
 int AudioFilePlayerAudioProcessor::getCurrentProgram() {
@@ -79,20 +83,10 @@ void AudioFilePlayerAudioProcessor::changeProgramName(
 
 void AudioFilePlayerAudioProcessor::prepareToPlay(double sampleRate,
                                                   int samplesPerBlock) {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
     transportSource.prepareToPlay(samplesPerBlock, sampleRate);
-
-    DBG("prepareToPlay called:");
-    DBG("  Sample Rate: " << sampleRate);
-    DBG("  Samples Per Block: " << samplesPerBlock);
-    DBG("  Total Num Input Channels: " << getTotalNumInputChannels());
-    DBG("  Total Num Output Channels: " << getTotalNumOutputChannels());
 }
 
 void AudioFilePlayerAudioProcessor::releaseResources() {
-    // When playback stops, you can use this as an opportunity to free up any
-    // spare memory, etc.
     transportSource.releaseResources();
 }
 
@@ -103,14 +97,12 @@ bool AudioFilePlayerAudioProcessor::isBusesLayoutSupported(
     juce::ignoreUnused(layouts);
     return true;
 #else
-    // Support 1 to 16 channels
     auto outputChannels = layouts.getMainOutputChannelSet().size();
 
     if (outputChannels < 1 || outputChannels > 16)
         return false;
 
 #if !JucePlugin_IsSynth
-    // Input and output channel counts must match
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
 #endif
@@ -120,91 +112,79 @@ bool AudioFilePlayerAudioProcessor::isBusesLayoutSupported(
 }
 #endif
 
+//==============================================================================
+// Real-time audio thread. Deliberately does nothing except pull audio from
+// whatever source is currently set. It must NEVER allocate, lock, or touch
+// `activeSource` / `fifo` directly -- that's all handled on the message
+// thread in timerCallback()/checkForNewSource(). AudioTransportSource is
+// designed to have its source swapped concurrently from another thread while
+// getNextAudioBlock() runs here, so this is safe.
 void AudioFilePlayerAudioProcessor::processBlock(
     juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) {
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Clear unused output channels
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    // Check if there's a new source available
-    ReferencedTransportSourceData::Ptr ptr = nullptr;
-
-    // Pull all available sources, keeping only the most recent one
-    ReferencedTransportSourceData::Ptr temp;
-    while (fifo.pull(temp)) {
-        ptr = temp;  // Keep the most recent
-    }
-
-    if (ptr != nullptr) {
-        DBG("processBlock: Got new source from FIFO");
-
-        pool.add(activeSource);
-        activeSource = ptr;
-        transportSource.stop();
-
-        // Get channel count from reader
-        auto* reader =
-            activeSource->currentAudioFileSource->getAudioFormatReader();
-        jassert(reader != nullptr);
-
-        int numChannels = reader->numChannels;
-        DBG("Setting transport source with " + String(numChannels) +
-            " channels");
-
-        transportSource.setSource(activeSource->currentAudioFileSource.get(),
-                                  32768,
-                                  &directoryScannerBackgroundThread,
-                                  activeSource->audioFileSourceSampleRate,
-                                  numChannels);
-
-        // Restore saved playback position if available
-        if (apvts.state.hasProperty("PlaybackPosition")) {
-            double savedPosition =
-                apvts.state.getProperty("PlaybackPosition", 0.0);
-            transportSource.setPosition(savedPosition);
-            DBG("Restored playback position: " + String(savedPosition) +
-                " seconds");
-
-            // Clear it so we don't restore again if another file is loaded
-            apvts.state.removeProperty("PlaybackPosition", nullptr);
-        }
-
-        sourceHasChanged.set(true);
-
-        DBG("Active source changed in processBlock");
-        DBG("  Transport total length: " +
-            String(transportSource.getTotalLength()));
-    }
-
-    // Only process if we have an active source
-    if (activeSource != nullptr && transportSource.getTotalLength() > 0) {
+    if (transportSource.getTotalLength() > 0) {
         AudioSourceChannelInfo asci(&buffer, 0, buffer.getNumSamples());
         transportSource.getNextAudioBlock(asci);
-
-        // Debug logging
-        static int processCounter = 0;
-        if (++processCounter % 100 == 0 && transportSource.isPlaying()) {
-            DBG("=== processBlock Analysis ===");
-            for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
-                float rms = buffer.getRMSLevel(ch, 0, buffer.getNumSamples());
-                if (rms > 0.0001f) {
-                    DBG("  Channel " + String(ch) + " RMS: " + String(rms));
-                }
-            }
-        }
     } else {
         buffer.clear();
     }
 }
 
 //==============================================================================
+// Message thread. Drains the FIFO and performs the swap, including the
+// (allocating, locking) transportSource.setSource() call. This is where the
+// "expensive" work now lives, well away from the audio callback.
+void AudioFilePlayerAudioProcessor::timerCallback() {
+    checkForNewSource();
+}
+
+void AudioFilePlayerAudioProcessor::checkForNewSource() {
+    ReferencedTransportSourceData::Ptr ptr = nullptr;
+
+    // Pull everything currently available, keeping only the most recent.
+    ReferencedTransportSourceData::Ptr temp;
+    while (fifo.pull(temp)) {
+        ptr = temp;
+    }
+
+    if (ptr == nullptr)
+        return;
+
+    DBG("checkForNewSource: swapping in new source (message thread)");
+
+    pool.add(activeSource);
+    activeSource = ptr;
+    transportSource.stop();
+
+    auto* reader = activeSource->currentAudioFileSource->getAudioFormatReader();
+    jassert(reader != nullptr);
+
+    int numChannels = reader->numChannels;
+
+    transportSource.setSource(activeSource->currentAudioFileSource.get(),
+                              32768,
+                              &directoryScannerBackgroundThread,
+                              activeSource->audioFileSourceSampleRate,
+                              numChannels);
+
+    if (apvts.state.hasProperty("PlaybackPosition")) {
+        double savedPosition = apvts.state.getProperty("PlaybackPosition", 0.0);
+        transportSource.setPosition(savedPosition);
+        apvts.state.removeProperty("PlaybackPosition", nullptr);
+    }
+
+    sourceHasChanged.set(true);
+}
+
+//==============================================================================
 bool AudioFilePlayerAudioProcessor::hasEditor() const {
-    return true;  // (change this to false if you choose to not supply an
-                  // editor)
+    return true;
 }
 
 juce::AudioProcessorEditor* AudioFilePlayerAudioProcessor::createEditor() {
@@ -229,18 +209,15 @@ void AudioFilePlayerAudioProcessor::setStateInformation(const void* data,
     auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
     if (tree.isValid()) {
         apvts.replaceState(tree);
-        DBG("State width = " +
-            apvts.state.getProperty("windowWidth", -1).toString());
 
         if (auto url = apvts.state.getProperty("CurrentFile", {});
             url != var()) {
             File file(url.toString());
             if (file.existsAsFile()) {
-                DBG("State restoration: Loading file: " +
-                    file.getFullPathName());
                 juce::URL path(file);
                 transportSourceCreator.requestTransportForURL(path);
-                // Position will be restored after file loads in processBlock
+                // Position will be restored after file loads, in
+                // checkForNewSource().
             }
         }
     }
@@ -249,13 +226,6 @@ void AudioFilePlayerAudioProcessor::setStateInformation(const void* data,
 AudioProcessorValueTreeState::ParameterLayout
 AudioFilePlayerAudioProcessor::createParameterLayout() {
     AudioProcessorValueTreeState::ParameterLayout layout;
-
-    // Window size parameters for UI persistence
-    // layout.add(std::make_unique<AudioParameterInt>(
-    //     "windowWidth", "Window Width", 400, 1200, 500));
-    // layout.add(std::make_unique<AudioParameterInt>(
-    //     "windowHeight", "Window Height", 400, 1000, 500));
-
     return layout;
 }
 

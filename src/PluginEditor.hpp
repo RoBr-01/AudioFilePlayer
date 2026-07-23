@@ -81,8 +81,6 @@ class DemoThumbnailComp : public Component,
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DemoThumbnailComp)
 };
 
-//==============================================================================
-// Main Audio Processor Editor
 class AudioFilePlayerAudioProcessorEditor : public AudioProcessorEditor,
                                             private ChangeListener,
                                             public Timer {
