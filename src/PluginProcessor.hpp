@@ -15,11 +15,11 @@ struct ReferencedTransportSourceData : juce::ReferenceCountedObject {
 
 struct AudioFormatReaderSourceCreator : juce::Thread {
     AudioFormatReaderSourceCreator(
-        Fifo<ReferencedTransportSourceData::Ptr>& fifo,
+        LatestValue<ReferencedTransportSourceData::Ptr>& pendingSourceOut,
         ReleasePool<ReferencedTransportSourceData>& pool,
         AudioFormatManager& afm)
         : juce::Thread("TransportSourceCreator"),
-          transportSourceFifo(fifo),
+          pendingSource(pendingSourceOut),
           releasePool(pool),
           formatManager(afm) {
         startThread();
@@ -33,41 +33,38 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
         DBG("AudioFormatReaderSourceCreator thread started!");
 
         while (!threadShouldExit()) {
-            if (urlFifo.getNumAvailableForReading() > 0) {
-                juce::URL audioURL;
-                while (urlFifo.pull(audioURL)) {
-                    DBG("AudioFormatReaderSourceCreator: Pulled URL: " +
-                        audioURL.toString(false));
+            juce::URL audioURL;
+            if (pendingURL.getIfNew(audioURL)) {
+                DBG("AudioFormatReaderSourceCreator: Loading URL: " +
+                    audioURL.toString(false));
 
-                    std::unique_ptr<AudioFormatReader> reader;
+                std::unique_ptr<AudioFormatReader> reader;
 
-                    if (audioURL.isLocalFile()) {
-                        reader.reset(formatManager.createReaderFor(
-                            audioURL.getLocalFile()));
-                    } else {
-                        auto options = URL::InputStreamOptions(
-                            URL::ParameterHandling::inAddress);
-                        reader.reset(formatManager.createReaderFor(
-                            audioURL.createInputStream(options)));
-                    }
+                if (audioURL.isLocalFile()) {
+                    reader.reset(formatManager.createReaderFor(
+                        audioURL.getLocalFile()));
+                } else {
+                    auto options = URL::InputStreamOptions(
+                        URL::ParameterHandling::inAddress);
+                    reader.reset(formatManager.createReaderFor(
+                        audioURL.createInputStream(options)));
+                }
 
-                    if (reader != nullptr) {
-                        DBG("Loaded audio file: " + audioURL.toString(false));
+                if (reader != nullptr) {
+                    DBG("Loaded audio file: " + audioURL.toString(false));
 
-                        using RTS = ReferencedTransportSourceData;
-                        RTS::Ptr rts = new ReferencedTransportSourceData();
+                    using RTS = ReferencedTransportSourceData;
+                    RTS::Ptr rts = new ReferencedTransportSourceData();
 
-                        rts->audioFileSourceSampleRate = reader->sampleRate;
+                    rts->audioFileSourceSampleRate = reader->sampleRate;
 
-                        rts->currentAudioFileSource.reset(
-                            new AudioFormatReaderSource(reader.release(),
-                                                        true));
+                    rts->currentAudioFileSource.reset(
+                        new AudioFormatReaderSource(reader.release(), true));
 
-                        rts->currentAudioFile = audioURL;
+                    rts->currentAudioFile = audioURL;
 
-                        releasePool.add(rts);
-                        transportSourceFifo.push(rts);
-                    }
+                    releasePool.add(rts);
+                    pendingSource.set(rts);
                 }
             }
 
@@ -77,19 +74,18 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
         DBG("AudioFormatReaderSourceCreator thread exiting!");
     }
 
+    // Safe to call from any thread. If called again before the previous
+    // request has been picked up by run(), the previous request is simply
+    // superseded and never loaded -- only the latest request matters.
     bool requestTransportForURL(juce::URL url) {
-        if (urlFifo.push(url)) {
-            notify();  // Wake up the thread
-            return true;
-        }
-
-        DBG("AudioFormatReaderSourceCreator: Failed to push URL to FIFO!");
-        return false;
+        pendingURL.set(url);
+        notify();  // Wake up the thread
+        return true;
     }
 
    private:
-    Fifo<juce::URL> urlFifo;
-    Fifo<ReferencedTransportSourceData::Ptr>& transportSourceFifo;
+    LatestValue<juce::URL> pendingURL;
+    LatestValue<ReferencedTransportSourceData::Ptr>& pendingSource;
     ReleasePool<ReferencedTransportSourceData>& releasePool;
 
     AudioFormatManager& formatManager;
@@ -164,13 +160,12 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor,
    private:
     TimeSliceThread directoryScannerBackgroundThread{"audio file preview"};
 
-    Fifo<ReferencedTransportSourceData::Ptr> fifo;
+    LatestValue<ReferencedTransportSourceData::Ptr> pendingSource;
     ReleasePool<ReferencedTransportSourceData> pool;
 
-    // Runs on the message thread. Drains `fifo` and performs the (expensive,
-    // allocating, locking) transportSource.setSource() call here instead of
-    // on the audio thread, which is what was causing the playback stutter
-    // when a new file finished loading while the old one was still playing.
+    // Runs on the message thread. Picks up the latest pending source and
+    // performs the (expensive, allocating, locking) transportSource.
+    // setSource() call here instead of on the audio thread.
     void timerCallback() override;
     void checkForNewSource();
 
@@ -179,7 +174,7 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor,
     AudioTransportSource transportSource;
 
     AudioFormatReaderSourceCreator transportSourceCreator{
-        fifo, pool, formatManager};
+        pendingSource, pool, formatManager};
 
     AudioThumbnailCache thumbnailCache{5};
 

@@ -2,6 +2,10 @@
 
 #include "PluginProcessor.hpp"
 
+// Scoped to this translation unit only -- the header intentionally avoids
+// `using namespace juce;` so it doesn't pollute every file that includes it.
+using namespace juce;
+
 //==============================================================================
 // DemoThumbnailComp Implementation
 DemoThumbnailComp::DemoThumbnailComp(AudioFormatManager& formatManager,
@@ -261,9 +265,6 @@ AudioFilePlayerAudioProcessorEditor::AudioFilePlayerAudioProcessorEditor(
 
     setSize(w, h);
     resized();
-
-    DBG("Editor width = " +
-        audioProcessor.apvts.state.getProperty("windowWidth", -1).toString());
 }
 
 AudioFilePlayerAudioProcessorEditor::~AudioFilePlayerAudioProcessorEditor() {
@@ -274,7 +275,6 @@ AudioFilePlayerAudioProcessorEditor::~AudioFilePlayerAudioProcessorEditor() {
     audioProcessor.apvts.state.setProperty("windowWidth", getWidth(), nullptr);
     audioProcessor.apvts.state.setProperty(
         "windowHeight", getHeight(), nullptr);
-    DBG("Saved window size: " + String(getWidth()) + "x" + String(getHeight()));
 }
 
 void AudioFilePlayerAudioProcessorEditor::paint(Graphics& g) {
@@ -303,10 +303,6 @@ void AudioFilePlayerAudioProcessorEditor::resized() {
         thumbnail->setBounds(r);
         thumbnail->repaint();
     }
-
-    // // save size to APVTS
-    // audioProcessor.apvts.getParameterAsValue("windowWidth") = getWidth();
-    // audioProcessor.apvts.getParameterAsValue("windowHeight") = getHeight();
 
     audioProcessor.apvts.state.setProperty("windowWidth", getWidth(), nullptr);
     audioProcessor.apvts.state.setProperty(

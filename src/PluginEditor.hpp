@@ -4,14 +4,12 @@
 
 #include "PluginProcessor.hpp"
 
-using namespace juce;
-
 // Helper to get consistent UI colours
-inline Colour getUIColourIfAvailable(
-    LookAndFeel_V4::ColourScheme::UIColour uiColour,
-    Colour fallback = Colour(0xff4d4d4d)) noexcept {
-    if (auto* v4 = dynamic_cast<LookAndFeel_V4*>(
-            &LookAndFeel::getDefaultLookAndFeel()))
+inline juce::Colour getUIColourIfAvailable(
+    juce::LookAndFeel_V4::ColourScheme::UIColour uiColour,
+    juce::Colour fallback = juce::Colour(0xff4d4d4d)) noexcept {
+    if (auto* v4 = dynamic_cast<juce::LookAndFeel_V4*>(
+            &juce::LookAndFeel::getDefaultLookAndFeel()))
         return v4->getCurrentColourScheme().getUIColour(uiColour);
 
     return fallback;
@@ -19,60 +17,62 @@ inline Colour getUIColourIfAvailable(
 
 //==============================================================================
 // Thumbnail component for waveform display
-class DemoThumbnailComp : public Component,
-                          public ChangeListener,
-                          public FileDragAndDropTarget,
-                          public ChangeBroadcaster,
-                          private ScrollBar::Listener,
-                          private Timer {
+class DemoThumbnailComp : public juce::Component,
+                          public juce::ChangeListener,
+                          public juce::FileDragAndDropTarget,
+                          public juce::ChangeBroadcaster,
+                          private juce::ScrollBar::Listener,
+                          private juce::Timer {
    public:
-    DemoThumbnailComp(AudioFormatManager& formatManager,
-                      AudioThumbnailCache& cacheToUse,
-                      Slider& slider,
-                      AudioTransportSource& source);
+    DemoThumbnailComp(juce::AudioFormatManager& formatManager,
+                      juce::AudioThumbnailCache& cacheToUse,
+                      juce::Slider& slider,
+                      juce::AudioTransportSource& source);
     ~DemoThumbnailComp() override;
 
-    void setURL(const URL& url);
-    URL getLastDroppedFile() const noexcept;
+    void setURL(const juce::URL& url);
+    juce::URL getLastDroppedFile() const noexcept;
     void setZoomFactor(double amount);
-    void setRange(Range<double> newRange);
+    void setRange(juce::Range<double> newRange);
     void setFollowsTransport(bool shouldFollow);
 
-    void paint(Graphics& g) override;
+    void paint(juce::Graphics& g) override;
     void resized() override;
 
-    void changeListenerCallback(ChangeBroadcaster*) override;
+    void changeListenerCallback(juce::ChangeBroadcaster*) override;
 
-    bool isInterestedInFileDrag(const StringArray& /*files*/) override;
-    void filesDropped(const StringArray& files, int /*x*/, int /*y*/) override;
+    bool isInterestedInFileDrag(const juce::StringArray& /*files*/) override;
+    void filesDropped(const juce::StringArray& files,
+                      int /*x*/,
+                      int /*y*/) override;
 
-    void mouseDown(const MouseEvent& e) override;
-    void mouseDrag(const MouseEvent& e) override;
-    void mouseUp(const MouseEvent& e) override;
-    void mouseWheelMove(const MouseEvent&,
-                        const MouseWheelDetails& wheel) override;
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseDrag(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
+    void mouseWheelMove(const juce::MouseEvent&,
+                        const juce::MouseWheelDetails& wheel) override;
 
    private:
-    AudioTransportSource& transportSource;
-    Slider& zoomSlider;
-    ScrollBar scrollbar{false};
+    juce::AudioTransportSource& transportSource;
+    juce::Slider& zoomSlider;
+    juce::ScrollBar scrollbar{false};
 
-    AudioThumbnailCache thumbnailCache{5};
-    AudioThumbnail thumbnail;
-    Range<double> visibleRange;
+    juce::AudioThumbnailCache thumbnailCache{5};
+    juce::AudioThumbnail thumbnail;
+    juce::Range<double> visibleRange;
     bool isFollowingTransport = false;
-    URL lastFileDropped;
+    juce::URL lastFileDropped;
 
-    DrawableRectangle currentPositionMarker;
+    juce::DrawableRectangle currentPositionMarker;
 
-    Image waveformCache;
+    juce::Image waveformCache;
     bool waveformNeedsUpdate = true;
 
     float timeToX(const double time) const;
     double xToTime(const float x) const;
     bool canMoveTransport() const noexcept;
 
-    void scrollBarMoved(ScrollBar* scrollBarThatHasMoved,
+    void scrollBarMoved(juce::ScrollBar* scrollBarThatHasMoved,
                         double newRangeStart) override;
     void timerCallback() override;
     void updateCursorPosition();
@@ -81,14 +81,14 @@ class DemoThumbnailComp : public Component,
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DemoThumbnailComp)
 };
 
-class AudioFilePlayerAudioProcessorEditor : public AudioProcessorEditor,
-                                            private ChangeListener,
-                                            public Timer {
+class AudioFilePlayerAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                            private juce::ChangeListener,
+                                            public juce::Timer {
    public:
     AudioFilePlayerAudioProcessorEditor(AudioFilePlayerAudioProcessor& p);
     ~AudioFilePlayerAudioProcessorEditor() override;
 
-    void paint(Graphics& g) override;
+    void paint(juce::Graphics& g) override;
     void resized() override;
     void timerCallback() override;
 
@@ -96,20 +96,21 @@ class AudioFilePlayerAudioProcessorEditor : public AudioProcessorEditor,
     AudioFilePlayerAudioProcessor& audioProcessor;
 
     std::unique_ptr<DemoThumbnailComp> thumbnail;
-    Label zoomLabel{{}, "zoom:"};
-    Slider zoomSlider{Slider::LinearHorizontal, Slider::NoTextBox};
-    ToggleButton followTransportButton{"Follow Transport"};
-    TextButton startStopButton{"Load an audio file first..."};
-    TextButton chooseFileButton{"Choose File..."};
-    Label filenameLabel{{}, "No file selected"};
+    juce::Label zoomLabel{{}, "zoom:"};
+    juce::Slider zoomSlider{juce::Slider::LinearHorizontal,
+                            juce::Slider::NoTextBox};
+    juce::ToggleButton followTransportButton{"Follow Transport"};
+    juce::TextButton startStopButton{"Load an audio file first..."};
+    juce::TextButton chooseFileButton{"Choose File..."};
+    juce::Label filenameLabel{{}, "No file selected"};
 
     ReferencedTransportSourceData::Ptr activeSource;
-    std::unique_ptr<FileChooser> fileChooser;
+    std::unique_ptr<juce::FileChooser> fileChooser;
 
     void startOrStop();
     void updateFollowTransportState();
     void chooseFile();
-    void changeListenerCallback(ChangeBroadcaster* source) override;
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void initializeWithExistingState();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(

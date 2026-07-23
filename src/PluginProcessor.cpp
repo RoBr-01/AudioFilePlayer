@@ -115,10 +115,10 @@ bool AudioFilePlayerAudioProcessor::isBusesLayoutSupported(
 //==============================================================================
 // Real-time audio thread. Deliberately does nothing except pull audio from
 // whatever source is currently set. It must NEVER allocate, lock, or touch
-// `activeSource` / `fifo` directly -- that's all handled on the message
-// thread in timerCallback()/checkForNewSource(). AudioTransportSource is
-// designed to have its source swapped concurrently from another thread while
-// getNextAudioBlock() runs here, so this is safe.
+// `activeSource` / `pendingSource` directly -- that's all handled on the
+// message thread in timerCallback()/checkForNewSource(). AudioTransportSource
+// is designed to have its source swapped concurrently from another thread
+// while getNextAudioBlock() runs here, so this is safe.
 void AudioFilePlayerAudioProcessor::processBlock(
     juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) {
     juce::ScopedNoDenormals noDenormals;
@@ -137,23 +137,17 @@ void AudioFilePlayerAudioProcessor::processBlock(
 }
 
 //==============================================================================
-// Message thread. Drains the FIFO and performs the swap, including the
-// (allocating, locking) transportSource.setSource() call. This is where the
-// "expensive" work now lives, well away from the audio callback.
+// Message thread. Picks up the latest pending source and performs the swap,
+// including the (allocating, locking) transportSource.setSource() call. This
+// is where the "expensive" work now lives, well away from the audio
+// callback.
 void AudioFilePlayerAudioProcessor::timerCallback() {
     checkForNewSource();
 }
 
 void AudioFilePlayerAudioProcessor::checkForNewSource() {
-    ReferencedTransportSourceData::Ptr ptr = nullptr;
-
-    // Pull everything currently available, keeping only the most recent.
-    ReferencedTransportSourceData::Ptr temp;
-    while (fifo.pull(temp)) {
-        ptr = temp;
-    }
-
-    if (ptr == nullptr)
+    ReferencedTransportSourceData::Ptr ptr;
+    if (!pendingSource.getIfNew(ptr) || ptr == nullptr)
         return;
 
     DBG("checkForNewSource: swapping in new source (message thread)");
@@ -174,7 +168,8 @@ void AudioFilePlayerAudioProcessor::checkForNewSource() {
                               numChannels);
 
     if (apvts.state.hasProperty("PlaybackPosition")) {
-        double savedPosition = apvts.state.getProperty("PlaybackPosition", 0.0);
+        double savedPosition =
+            apvts.state.getProperty("PlaybackPosition", 0.0);
         transportSource.setPosition(savedPosition);
         apvts.state.removeProperty("PlaybackPosition", nullptr);
     }

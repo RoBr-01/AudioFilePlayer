@@ -3,54 +3,57 @@
 
 #include <JuceHeader.h>
 
-#include <cstddef>
+#include <algorithm>
+#include <vector>
 
-template <typename T, size_t Size = 30>
-class Fifo {
+//==============================================================================
+// Thread-safe single-slot "latest value wins" handoff. Use this instead of a
+// multi-slot queue whenever only the most recently produced value matters
+// and any older, superseded values can simply be discarded -- e.g. handing a
+// newly-loaded audio source from a background thread to the thread that will
+// consume it, where a file-load requested before the most recent one is
+// irrelevant the moment a newer one arrives.
+//
+// Safe to call set()/getIfNew() from any thread(s) -- guarded by a SpinLock,
+// so avoid calling from a real-time audio thread (nothing here does).
+template <typename T>
+class LatestValue {
    public:
-    size_t getSize() const noexcept {
-        return Size;
+    void set(T value) {
+        const juce::SpinLock::ScopedLockType lock(mutex);
+        current = std::move(value);
+        available = true;
     }
 
-    bool push(const T& t) {
-        auto write = fifo.write(1);
-        if (write.blockSize1 > 0) {
-            size_t index = static_cast<size_t>(write.startIndex1);
-            buffer[index] = t;
-            return true;
-        }
+    // Returns true and fills `out` if a value has been set() since the last
+    // successful getIfNew(); otherwise returns false and leaves `out`
+    // untouched.
+    bool getIfNew(T& out) {
+        const juce::SpinLock::ScopedLockType lock(mutex);
+        if (!available)
+            return false;
 
-        return false;
-    }
-
-    bool pull(T& t) {
-        auto read = fifo.read(1);
-        if (read.blockSize1 > 0) {
-            t = buffer[static_cast<size_t>(read.startIndex1)];
-            return true;
-        }
-
-        return false;
-    }
-
-    int getNumAvailableForReading() const {
-        return fifo.getNumReady();
-    }
-
-    int getAvailableSpace() const {
-        return fifo.getFreeSpace();
+        out = current;
+        available = false;
+        return true;
     }
 
    private:
-    juce::AbstractFifo fifo{Size};
-    std::array<T, Size> buffer;
+    juce::SpinLock mutex;
+    T current{};
+    bool available = false;
 };
 
+//==============================================================================
+// Holds onto reference-counted objects until it's safe to let them be
+// destroyed -- i.e. until nothing else still holds a reference (in
+// particular, until the audio thread has stopped using them). add() may be
+// called from any thread; pruning happens on this object's own Timer
+// callback (message thread), where deletion is safe.
 template <typename ReferenceCountedType>
 struct ReleasePool : juce::Timer {
     ReleasePool() {
         deletionPool.reserve(5000);
-
         startTimer(1 * 1000);
     }
 
@@ -60,30 +63,17 @@ struct ReleasePool : juce::Timer {
 
     using Ptr = typename ReferenceCountedType::Ptr;
 
+    // Safe to call from any thread.
     void add(Ptr ptr) {
         if (ptr == nullptr)
             return;
 
-        if (juce::MessageManager::getInstance()->isThisTheMessageThread()) {
-            addIfNotAlreadyThere(ptr);
-        } else {
-            if (fifo.push(ptr)) {
-                successfullyAdded.set(true);
-            } else {
-                jassertfalse;
-            }
-        }
+        const juce::SpinLock::ScopedLockType lock(mutex);
+        addIfNotAlreadyThere(ptr);
     }
 
     void timerCallback() override {
-        if (successfullyAdded.compareAndSetBool(true, false)) {
-            Ptr ptr;
-            while (fifo.pull(ptr)) {
-                addIfNotAlreadyThere(ptr);
-                ptr = nullptr;
-            }
-        }
-
+        const juce::SpinLock::ScopedLockType lock(mutex);
         deletionPool.erase(
             std::remove_if(
                 deletionPool.begin(),
@@ -93,10 +83,10 @@ struct ReleasePool : juce::Timer {
     }
 
    private:
-    Fifo<Ptr, 512> fifo;
+    juce::SpinLock mutex;
     std::vector<Ptr> deletionPool;
-    juce::Atomic<bool> successfullyAdded{false};
 
+    // Called under `mutex`.
     void addIfNotAlreadyThere(Ptr ptr) {
         auto found = std::find_if(
             deletionPool.begin(), deletionPool.end(), [ptr](const auto& elem) {
