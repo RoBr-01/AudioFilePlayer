@@ -151,8 +151,7 @@ void AudioFilePlayerAudioProcessor::checkForNewSource() {
         return;
 
     DBG("checkForNewSource: swapping in new source (message thread)");
-
-    pool.add(activeSource);
+    
     activeSource = ptr;
     transportSource.stop();
 

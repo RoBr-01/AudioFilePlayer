@@ -16,11 +16,9 @@ struct ReferencedTransportSourceData : juce::ReferenceCountedObject {
 struct AudioFormatReaderSourceCreator : juce::Thread {
     AudioFormatReaderSourceCreator(
         LatestValue<ReferencedTransportSourceData::Ptr>& pendingSourceOut,
-        ReleasePool<ReferencedTransportSourceData>& pool,
         AudioFormatManager& afm)
         : juce::Thread("TransportSourceCreator"),
           pendingSource(pendingSourceOut),
-          releasePool(pool),
           formatManager(afm) {
         startThread();
     }
@@ -63,7 +61,6 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
 
                     rts->currentAudioFile = audioURL;
 
-                    releasePool.add(rts);
                     pendingSource.set(rts);
                 }
             }
@@ -86,7 +83,6 @@ struct AudioFormatReaderSourceCreator : juce::Thread {
    private:
     LatestValue<juce::URL> pendingURL;
     LatestValue<ReferencedTransportSourceData::Ptr>& pendingSource;
-    ReleasePool<ReferencedTransportSourceData>& releasePool;
 
     AudioFormatManager& formatManager;
 };
@@ -161,7 +157,6 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor,
     TimeSliceThread directoryScannerBackgroundThread{"audio file preview"};
 
     LatestValue<ReferencedTransportSourceData::Ptr> pendingSource;
-    ReleasePool<ReferencedTransportSourceData> pool;
 
     // Runs on the message thread. Picks up the latest pending source and
     // performs the (expensive, allocating, locking) transportSource.
@@ -174,7 +169,7 @@ class AudioFilePlayerAudioProcessor : public juce::AudioProcessor,
     AudioTransportSource transportSource;
 
     AudioFormatReaderSourceCreator transportSourceCreator{
-        pendingSource, pool, formatManager};
+        pendingSource, formatManager};
 
     AudioThumbnailCache thumbnailCache{5};
 
